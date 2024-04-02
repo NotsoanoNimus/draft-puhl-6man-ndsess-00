@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-model href="rfc7991bis.rnc"?>
+
+<!DOCTYPE rfc [
+  <!ENTITY nbsp    "&#160;">
+  <!ENTITY zwsp   "&#8203;">
+  <!ENTITY nbhy   "&#8209;">
+  <!ENTITY wj     "&#8288;">
+  <!ENTITY times  "&#215;">
+]>
+
+<rfc
+  xmlns:xi="http://www.w3.org/2001/XInclude"
+  category="exp"
+  docName="draft-puhl-6man-ndsess-00"
+  ipr="trust200902"
+  obsoletes=""
+  updates=""
+  submissionType="IETF"
+  xml:lang="en"
+  consensus="true"
+  version="3">
+  <front>
+    <title abbrev="ndsess">End-to-End Session Option for Neighbor Discovery</title>
+    <seriesInfo name="Internet-Draft" value="draft-puhl-6man-ndsess-00"/>
+    <author fullname="Zack Puhl" initials="Z." surname="Puhl">
+      <organization>University of Michigan</organization>
+      <address>
+        <postal>
+          <city>Detroit</city>
+          <region>Michigan</region>
+          <country>US</country>
+        </postal>
+        <email>zpuhl@xmit.xyz</email>  
+        <email>zpuhl@umich.edu</email>  
+        <uri>https://xmit.xyz/</uri>
+      </address>
+    </author>
+    <date year="2024"/>
+    <area>Internet</area>
+    <workgroup>IPv6 Maintenance</workgroup>
+    <keyword>ipv6</keyword>
+    <keyword>ndp</keyword>
+    <keyword>sessions</keyword>
+    <keyword>spoofing</keyword>
+    <keyword>ownership</keyword>
+    <abstract>
+      <t>
+        <!-- TODO! -->
+      </t>
+    </abstract>
+  </front>
+
+
+  <middle>
+    <section anchor="intro">
+      <name>Introduction</name>
+      <t>
+        <!-- TODO -->
+      </t>
+      
+      <section anchor="intro-requirements">
+        <name>Specification of Requirements</name>
+        <t>
+          The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+          "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT
+          RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+          interpreted as described in BCP 14 <xref target="RFC2119"/>
+          <xref target="RFC8174"/> when, and only when, they appear in
+          all capitals, as shown here.
+        </t>
+      </section>
+    </section>
+
+    <section anchor="terms">
+      <name>Terminology</name>
+      <!-- TODO -->
+      <t>
+        Many of the terms in this document are defined in Section 2.1 of <xref target="RFC4861"/>, and will be noted accordingly.
+      </t>
+      <t>
+        An alphabetical glossary of terms related to this document is specified in this section. Items appearing here may or may
+        not be acronymized even in their first appearances in future sections (but never in section headers), so knowledge of them
+        is assumed henceforth.
+      </t>
+      <dl newline="true">
+        <!-- TODO -->
+      </dl>
+    </section>
+
+    <section anchor="summary">
+      <name>Neighbor Discovery Sessions</name>
+      <t>
+      </t>
+
+      <section anchor="summary-overview">
+        <name>Design Overview</name>
+        <t>
+          VBAs protect the local network from on-path traffic redirection attacks that seek to intercept packets. They are, however,
+          vulnerable to identity assumption attacks, where a node can be 'killed' (removed from the network maliciously) and the
+          malicious node is free to assume its link-layer identifier, thus resulting in the same on-path attacks VBAs aim to thwart.
+          This is a result of the VBA link-layer bindings only requiring the node with the valid link-layer address to be the one
+          communicating. To mitigate this, two hosts MAY establish private, unicast-only hash chains that can be used to prove each
+          other's identities without using public-key cryptography.
+        </t>
+
+        <section anchor="summary-overview-goals">
+          <name>Goals</name>
+          <t>
+          </t>
+
+          <section anchor="summary-overview-goals-binding">
+            <name>Link-Layer Bindings</name>
+            <t>
+            </t>
+          </section>
+
+          <section anchor="summary-overview-goals-binding">
+            <name>Impersonation Protection</name>
+            <t>
+            </t>
+          </section>
+        </section>
+
+        <section anchor="summary-overview-chains">
+          <name>Reverse Hash Chains</name>
+          <t>
+            Neighbor Discovery Sessions use two-way reverse hash chains to prove the ongoing exchange of all NUD or NDP Address Resolution
+            packets are still private between the two original interfaces. These reverse hash chains were first theoretically applied to IPv6
+            addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->. Chains are small and lightweight to compute, but
+            difficult to reverse or spoof thanks to the one-way nature of hashing functions.
+          </t>
+          <t>
+            A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
+            value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to with some Counter value of iterations.
+            It is a public and essential value for verifying nodes to be aware of.
+          </t>
+          <t>
+            The node creating the hash chain will be aware of its initial parameters. The first created hash is known as the 'Root Hash' and
+            is essential knowledge for deriving the rest of the chain values iteratively. The Root Hash then acts as a sort of 'password' to
+            the rest of the chain, so it MUST be kept secret until the session's chain is exhausted.
+          </t>
+          <t>
+            Nodes can prove communication with an honest and genuine host (who owns a link-layer address) by asking for a hash chain value
+            they do not know yet. And once the chain is exhausted, meaning either (1) the Root Hash would be next in line to reveal or (2) the
+            chain is about to expire, the Root Hash is subsequently revealed in order to set a NewHash value. The NewHash value is equivalent
+            to the FinalHash value of a new chain that is also CounterMax iterations in length.
+          </t>
+          <figure anchor="session-chaining">
+            <name>A Visualization of Hash Chaining</name>
+            <artwork type="ascii-art" name="hashChains.txt">
+              <![CDATA[
+R   =  [a pseudo-random secret]
+e   =  Expiration of the chain, in minutes.
+c   =  [some integer; 0 < c < 2^16]
+ `----> A chain seeded by R using c total iterations,
+         that expires after 'e' minutes.
+
+p   =  c || e (concatenation of 'c' & 'e' as decimal strings)
+
+H_n+1 = SHA256(H_n || p)
+H_0  =  SHA256(R || p)
+   `----> Also known as the 'Root Hash'.
+
+Therefore, the 'Final Hash' is H_c:
+H_c =  SHA256(SHA256( ... SHA256(H_0 || p) ... || p) || p)
+
+CHAIN ACCORDING TO GENERATOR:
+        (==)(= ... =)(==)(==)(==)(==)(==)(==)
+         |            |   |   |   |   |   |
+   H_:   0       ... c-5 c-4 c-3 c-2 c-1  c
+
+SAME CHAIN ACCORDING TO RECEIVERS:
+ [assuming the receiver gets H_x]
+  ... ??? =)(==)(==)(==)(==)(==)
+             |   |   |   |   |
+  H_:        x  x+1 x+2 x+3  c 
+
+Holders of the Root Hash are always able to determine
+ any value of H_t where {0 <= t <= c}. Receivers who
+ know some intermediate hash H_x, where {0 < x <= c},
+ are only able to determine H_y where {x <= y <= c}.
+            ]]>
+          </artwork>
+        </figure>
+      </section>
+<!--       
+        <t>
+          The following list outlines some general requirements for two-way NDP Sessions:
+        </t>
+        <ul>
+          <li>
+            Information related to Session options MUST be stored persistently on-disk. It MUST NOT be deleted until the session expires.
+            This information includes: local Root Hash, local Counter, local CounterMax, local ExpirationMin, remote Counter &amp; remote
+            FinalHash.
+          </li>
+          <li>
+            Session options MUST be used only with unicast ND traffic, with the exception of the initial multicast Neighbor Solicitation to
+            find a target node's Target Link-Layer Address information. If Session options appear in any other multicast exchange, they MUST
+            be ignored by receivers.
+          </li>
+          <li>
+            SHA-256 MUST be used exclusively for all hash chaining and all subsequent verifications. Another hashing algorithm MAY supersede
+            this appointment in future protocol amendments.
+          </li>
+          <li>
+            Persistent sessions SHOULD only be used on stable networks where nodes are not frequently entering or exiting the network. Relying
+            on the 'ExpirationMin' time for the session to expire without valid ND messages is almost always a better option because it is
+            forgiving of potential node forgetfulness.
+          </li>
+        </ul>
+        <t>
+          NDP Sessions are visualized in the following figure:
+        </t>
+        <figure anchor="session-demo">
+          <name>Neighbor Discovery Sessions</name>
+          <artwork type="ascii-art" name="ndpSessions.txt">
+            <![CDATA[
+            ]]>
+          </artwork>
+        </figure> -->
+
+      <section anchor="addenda-session-initiators">
+        <name>Session Initiation</name>
+        <t>
+        </t>
+      </section>
+
+      <section anchor="addenda-session-recipients">
+        <name>Receiving New Sessions</name>
+        <t>
+        </t>
+      </section>
+
+      <section anchor="summary-lifetimes">
+        <name>Intended Lifetimes</name>
+        <t>
+        </t>
+      </section>
+    </section>
+
+    <section anchor="addenda">
+      <name>Neighbor Discovery Protocol Options</name>
+      <t>The NDP option formats specified in this section MUST be supported to enable ND Sessions.</t>
+
+      <section anchor="addenda-session">
+        <name>Session Option</name>
+        <t>
+          The Session option MAY be included in Neighbor Solicitations or Neighbor Advertisements to indicate
+          preference for a secured NDP Session between two on-link nodes.
+        </t>
+        <figure>
+          <name>Structure of the NDP Link Voucher option</name>
+          <artwork type="ascii-art" name="sessionOption.txt">
+            <![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |     Type      |    Length     |P|N|A| Reserved|   Expiration  |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                           SessionID                           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |           CounterMax          |            Counter            |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                          CurrentHash                          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                           FinalHash                           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                            NewHash                            |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            ]]>
+          </artwork>
+        </figure>
+        <dl newline="true">
+          <dt>Type</dt><dd>65</dd>
+          <dt>Length</dt><dd>3. The total length of the Session option from the Type through its end -- inclusive -- in units of 8 octets.</dd>
+          <dt>P</dt>
+          <dd>
+            Persistent bit. When this is a new session, indicates the exchange is intended to establish a long-term, ongoing ND Session.
+            The 'Expiration' field becomes units of hours rather than minutes.
+          </dd>
+          <dt>N</dt>
+          <dd>
+            New bit. Indicates the Session option intends to establish a new Session for communication between two hosts. The ND Source Link-Layer
+            Address option MUST be included in the same NDP packet when this bit is set.
+          </dd>
+          <dt>A</dt>
+          <dd>
+            Acknowledgement bit. Indicates the Session option is responding directly to a New Session (using the 'N' bit set to 1). The Target
+            Link-Layer Address option MUST be included in the same NDP packet when this bit is set.
+          </dd>
+          <dt>Reserved</dt>
+          <dd>Space reserved for future use. This value MUST be initialized to 0 by senders and MUST be ignored by receivers.</dd>
+          <dt>Expiration</dt>
+          <dd>
+            If the session is NOT perisistent: dictates the amount of time it takes without activity, in minutes, for the ND Session to expire.
+            If the session IS persistent: dictates the same, but in units of hours instead.
+          </dd>
+          <dt>CounterMax</dt>
+          <dd>
+            Big-endian. The amount of times a secret Root Hash H<sub>0</sub> is iterated to produce the Final Hash H<sub>CounterMax</sub>. This
+            value SHOULD NOT be set higher than 10,000.
+          </dd>
+          <dt>Counter</dt>
+          <dd>
+            Big-endian. MUST be less than CounterMax. The amount of SHA-256 hash iterations over the CurrentHash that is required to form
+            the FinalHash. If this value is set to 0, then the CurrentHash MUST be set to the chain's Root Hash and NewHash MUST be the new
+            FinalHash value of the next chain with the same CounterMax iterations length.
+          </dd>
+          <dt>CurrentHash</dt><dd>The input hash which, when iterated by SHA-256 Counter times, will produce the FinalHash.</dd>
+          <dt>FinalHash</dt><dd>The Final Hash from the set computed with Counter SHA-256 iterations.</dd>
+          <dt>NewHash</dt>
+          <dd>
+            When CurrentHash equals the Root Hash of the current chain and Counter is equal to CounterMax, this value MUST be a new
+            FinalHash to use for the next chain, which MUST inherit the CounterMax value currently being used.
+          </dd>
+        </dl>
+
+        <section anchor="addenda-session-senders">
+          <name>Processing Rules for Senders</name>
+          <t>
+          </t>
+        </section>
+
+        <section anchor="addenda-session-receivers">
+          <name>Processing Rules for Receivers</name>
+          <t>
+          </t>
+        </section>
+      </section>
+    </section>
+    
+    <section anchor="Security">
+      <name>Security Considerations</name>
+      <t>
+        This section includes discussions on subjects related to the security of Neighbor Discovery Sessions.
+        It also serves to clarify certain processes or tangential protocol-related topics that may not have had
+        adequate exploration in the rest of this document.
+      </t>
+
+      <section anchor="security-binding">
+        <name>Short-Term Proof of Ownership</name>
+        <t>
+          <!-- TODO: ND Sessions provide short-term proof of ownership because malicious senders don't know root hash values. -->
+        </t>
+      </section>
+
+      <section anchor="security-dos">
+        <name>Denial of Service</name>
+        <t>
+          This brief section discusses concerns about potential denial of service attack vectors when
+          employing ND Sessions.
+        </t>
+      </section>
+    </section>
+    
+    <section anchor="IANA">
+      <name>IANA Considerations</name>
+      <t>
+        One new Neighbor Discovery Protocol option is defined in this document and must have the new Option
+        Type value assigned in the "IPv6 Neighbor Discovery Option Formats" subregistry of the "Internet
+        Control Message Protocol version 6 (ICMPv6) Parameters" registry.
+      </t>
+      <ul>
+        <li>The Session option, described in <xref target="addenda-session"/>.</li>
+      </ul>
+    </section>
+  </middle>
+
+
+  <back>
+    <references>
+      <name>References</name>
+      <references>
+        <name>Normative References</name>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4861.xml"/>
+      </references>
+      <references>
+        <name>Informative References</name>
+      </references>
+      <!-- <references>
+        <name>Informative References</name>
+        <reference anchor="exampleRefMin">
+          <front>
+            <title>Title [REPLACE]</title>
+            <author initials="Initials [REPLACE]" surname="Surname [REPLACE]">
+              <organization/>
+            </author>
+            <date year="2006"/>
+          </front>
+        </reference>
+        <reference anchor="exampleRefOrg" target="http://www.example.com/">
+          <front>
+            <title>Title [REPLACE]</title>
+            <author>
+              <organization>Organization [REPLACE]</organization>
+            </author>
+            <date year="1984"/>
+          </front>
+        </reference>       
+      </references> -->
+    </references>
+
+    <section anchor="appendix-code">
+      <name>Code Snippets</name>
+      <t>
+        This section contains various sample code snippets related to this document. All code is written in C and does
+        not have any dependencies except the standard library.
+      </t>
+    </section>
+ </back>
+</rfc>
