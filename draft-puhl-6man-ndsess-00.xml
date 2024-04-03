@@ -203,17 +203,6 @@
           value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to after some applied 'Counter' value
           of iterations. The 'final hash' H<sub>counter</sub> is a public and essential value for verifying nodes to store persistently.
         </t>
-        <t>
-          The node creating the hash chain will be aware of its initial parameters. The first computed hash is known as the 'Root Hash' and
-          is essential knowledge for deriving the rest of the chain links iteratively. The Root Hash then acts as a sort of 'password' to
-          the rest of the chain, so it MUST be kept secret until the session's chain is nearly exhausted.
-        </t>
-        <t>
-          Nodes can prove communication with an honest and genuine host within an established session by asking for a hash chain value
-          they do not know yet. And once the chain is exhausted, meaning either (1) the Root Hash would be next in line to reveal or (2) the
-          chain is about to expire, the Root Hash is subsequently revealed in order to set a NewHash value. The NewHash value is equivalent
-          to the FinalHash value of a new chain that is also CounterMax iterations in length.
-        </t>
         <figure anchor="session-chaining">
           <name>Hash Chaining in ND Sessions</name>
           <artwork type="ascii-art" name="hashChains.txt">
@@ -256,6 +245,20 @@ Holders of the Root Hash are always able to determine
             ]]>
           </artwork>
         </figure>
+        <t>
+          The node creating the hash chain will be aware of its initial parameters. The first computed hash is known as the 'Root Hash' and
+          is essential knowledge for deriving the rest of the chain links iteratively. The Root Hash then acts as a sort of 'password' to
+          the rest of the chain, so it MUST be kept secret until the session's chain is nearly exhausted.
+        </t>
+        <t>
+          Nodes can prove communication with an honest and genuine host within an established session by asking for a hash chain value
+          they do not know yet. And once the chain is exhausted, meaning either (1) the Root Hash would be next in line to reveal or (2) the
+          chain is about to expire, the Root Hash is subsequently revealed in order to set a NewHash value. The NewHash value is equivalent
+          to the FinalHash value of a new chain that is also CounterMax iterations in length.
+        </t>
+        <t>
+          See <xref target="appendix-chain"/> for more specific details about reverse hash chain revelation and authentication.
+        </t>
       </section>
 
 <!--       
@@ -444,6 +447,21 @@ Holders of the Root Hash are always able to determine
         </section>
       </section>
     </section>
+
+    <section anchor="example">
+      <name>An Example Session</name>
+      <t>
+        It is useful to first establish some context before presenting the process of a legitimate session.
+        Host A (H_a) is the soliciting host initiating the session, while Host B (H_b) accepts it and engages.
+      </t>
+      <blockquote>
+        H_a has address '2001:db8::12bc:8090/64' with LLID '3B-55-0C-00-12-33'<br />
+        H_b has address '2001:db8::aaaa:bbbb/64' with LLID 'BC-71-A3-89-CC-60'
+      </blockquote>
+      <ol>
+        <li>H_a sends a solicited-multicast NS to ff02::1:ffaa:bbbb, including a 'New' (initiated) ND Session option.</li>
+      </ol>
+    </section>
     
     <section anchor="security">
       <name>Security Considerations</name>
@@ -454,7 +472,7 @@ Holders of the Root Hash are always able to determine
       </t>
 
       <section anchor="security-binding">
-        <name>Ephemeral Proof of Ownership</name>
+        <name>Temporal Proof of Ownership</name>
         <t>
           <!-- TODO: ND Sessions provide short-term proof of ownership because malicious senders don't know root hash values. -->
         </t>
@@ -517,6 +535,71 @@ Holders of the Root Hash are always able to determine
         </reference>       
       </references> -->
     </references>
+
+    <section anchor="appendix-chain">
+      <name>Reverse Hash Chain: A Concrete Example</name>
+      <t>
+        This section contains a more detailed and specific example of reverse hash chain revelation, and how its values
+        can be used as idempotent, one-time passwords to prove knowledge of a single root password (the Root Hash).
+      </t>
+      <figure>
+        <name>Example: Authentication by Reverse Hash Chain Revelation</name>
+        <artwork type="ascii-art" name="hashChainExample.txt">
+          <![CDATA[
+=========================================================
+GENERATOR'S PERSPECTIVE:
+  R   := A seed value from a PRNG or entropy source.
+  C   := A maximum iterations count.
+  S   := A fixed Salt value using C and other constants.
+
+H_0   := SHA256(R || S)   <--- Root Hash
+H_n+1 := SHA256(H_n || S)
+
+If...
+  R = "gbvouewihng398p44fijmv3o"
+  C = 5
+  S = "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
+
+Then...
+  H_0 = SHA256(
+         "gbvouewihng398p44fijmv3o" ||
+         "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
+        )
+      = c36b2c9a...bc901395
+
+  H_C = H_5 = [function 'H_n+1' iterated 'C' times...]
+      = 7d730fee...4aac9926
+
+* Any value H_n where {0 < n <= C} can be derived from H_0.
+
+=========================================================
+VERIFIER'S PERSPECTIVE:
+| "All I know is..."
+    C    := 5
+    S    := "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
+    H_C  := H_5 = 7d730fee...4aac9926
+
+| "To prove identity, the sender tries to give me H_4.
+|   I wouldn't have known this value prior to getting it,
+|   because hashes are irreversible."
+
+    H_4  := a050d6b5...4bdc3801
+
+| "If I iterate function 'H_n+1' from n = 4 up to n = C
+|   (1 iteration), then the resultant hash MUST match H_C."
+
+    H_5   = H_C = SHA256(H_4 || S) ==> 7d730fee...4aac9926
+  
+| "The sender of H_4 clearly knows a hash I don't. It must
+|   be a host that knows the Root Hash. Valid!" (*)
+
+* At this point, H_4 is no longer a valid proof of
+    identity because it has been used. H_n where n < 4 is
+    now REQUIRED in order to continue proving identity.
+          ]]>
+        </artwork>
+      </figure>
+    </section>
 
     <section anchor="appendix-code">
       <name>Code Snippets</name>
