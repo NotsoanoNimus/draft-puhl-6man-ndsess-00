@@ -56,6 +56,8 @@
     <section anchor="intro">
       <name>Introduction</name>
       <t>
+        <!-- Inspired by Signal's double-ratchet encryption. -->
+        <!-- Rabble about complexity of SEND and other PKI stuff. Need something that can apply BROADLY, end-to-end, and at the SOFTWARE LEVEL (not network hardware) -->
         <!-- TODO -->
       </t>
       
@@ -76,87 +78,158 @@
       <name>Terminology</name>
       <!-- TODO -->
       <t>
-        Many of the terms in this document are defined in Section 2.1 of <xref target="RFC4861"/>, and will be noted accordingly.
-      </t>
-      <t>
         An alphabetical glossary of terms related to this document is specified in this section. Items appearing here may or may
         not be acronymized even in their first appearances in future sections (but never in section headers), so knowledge of them
         is assumed henceforth.
       </t>
-      <dl newline="true">
-        <!-- TODO -->
-      </dl>
+      <t>
+        Many of the terms in this document are defined in Section 2.1 of <xref target="RFC4861"/>, and will be noted accordingly.
+      </t>
+      <!-- <dl newline="true">
+      </dl> -->
     </section>
 
     <section anchor="summary">
       <name>Neighbor Discovery Sessions</name>
       <t>
+        This section defines the purpose, goals, and mechanisms underlying end-to-end ND sessions.
       </t>
 
       <section anchor="summary-overview">
         <name>Design Overview</name>
         <t>
-          VBAs protect the local network from on-path traffic redirection attacks that seek to intercept packets. They are, however,
+          ND sessions are a "weak" security solution driven by cryptographic hashing. They trade simplicity, ease of use, and
+          first-come-first-serve trust for a lack of complex public-key cryptography, infrastructure, signatures, etc. They
+          are used to bind two exchanged, perishable secrets to a specific Neighbor Discovery Address Resolution exchange
+          between two nodes on the same network. The revelation of a secret causes its immediate expiration.
+        </t>
+        <t>
+          It is important to note: sessions DO NOT guarantee the ownership of an IP address. They only guarantee the legitimacy
+          of ND Address Resolution and NUD packets exchanged within an established, ongoing session.
+        </t>
+        <t>
+          Numerous suggestions have been made in the past to bind link-layer addresses to their IP addresses without requiring
+          public-key cryptography <!-- ref? -->. But these suggestions are still
           vulnerable to identity assumption attacks, where a node can be 'killed' (removed from the network maliciously) and the
-          malicious node is free to assume its link-layer identifier, thus resulting in the same on-path attacks VBAs aim to thwart.
-          This is a result of the VBA link-layer bindings only requiring the node with the valid link-layer address to be the one
-          communicating. To mitigate this, two hosts MAY establish private, unicast-only hash chains that can be used to prove each
-          other's identities without using public-key cryptography.
+          malicious node is free to assume its link-layer identifier, thus circumventing such address bindings. When this
+          happens, malicious nodes become just as liberated as ever to falsify and redirect NDP traffic in on-path attacks.
+        </t>  
+        <t>
+          To mitigate this, two hosts can establish private, unicast-only hash chains that can be used to prove each other's
+          identities over a long-term and ongoing session. Hash chains are refreshed at random and each of the two participating
+          hosts maintain their own 'perspective' of the session. Employing this cryptographic primitive allows the hosts entered
+          into a session to identify when the other node has been 'killed' and to act accordingly.
         </t>
 
         <section anchor="summary-overview-goals">
-          <name>Goals</name>
+          <name>Goals &amp; Tradeoffs</name>
           <t>
+            ND Sessions seek to accomplish a few different goals:
           </t>
-
-          <section anchor="summary-overview-goals-binding">
-            <name>Link-Layer Bindings</name>
-            <t>
-            </t>
-          </section>
-
-          <section anchor="summary-overview-goals-binding">
-            <name>Impersonation Protection</name>
-            <t>
-            </t>
-          </section>
+          <ul>
+            <li>
+              Identification. A session established with a legitimate node is guaranteed to be legitimate through its duration,
+              potentially ad infinitum if it is consistently refreshed. Any malicious node cannot spoof the Address Resolution
+              results of a neighbor already engaged in a set of ND sessions.
+            </li>
+            <li>
+              Simplicity. No reliance on public-key cryptography or Public-Key Infrastructure is highly preferred, as such
+              complexities have resulted in previous proposals 
+            </li>
+            <li>
+              Performance. A static reliance on SHA-256 and very simple concatenate-and-iterate movements lends itself to
+              drastically improved performance on embedded systems participating in sessions. SHA-256 is perhaps one of the most
+              ubiquitous and well-known hashing algorithms <!-- ref -->, while also being significantly collision-resistant <!-- ref -->.
+            </li>
+            <li>
+              Privacy. Sessions are end-to-end and do not rely on a centralized infrastructure to communicate registration
+              information or other parameters. The use of hash chains ensures the privacy and protection of root session passwords
+              at all times.
+            </li>
+            <li>
+              Flexibility. Nodes can opt into or out of sessions at any time by simply disregarding packet options, depending on
+              their interface configuration and implementation.
+            </li>
+          </ul>
+          <t>
+            These goals must necessarily be accomplished by the trading off of some other features granted by more complex solutions.
+            Drawbacks of using ND session options, as opposed to more mature specifications, includes:
+          </t>
+          <ul>
+            <li>
+              Temporality. Expirations are imposed on sessions after considerably long (and adjustable) durations. Any malicious node
+              taking advantage of a session expirations could successfully snipe link sessions and therefore lock out legitimate hosts
+              from communicating using the resolved Target Address. This will be explained further in <xref target="security"/>.
+            </li>
+            <li>
+              Disconnectedness. Any participant of a session who is either (1) maliciously locked out of a session by letting it expire,
+              or (2) fails to persist session details properly, will suffer from a long-term state of disconnection from the peer whom
+              it was entered into a session with. This is because the other end of the session is not allowed to permit flexibility in
+              establishing new sessions with the same IP and link-layer address combination.
+            </li>
+            <li>
+              Disorganization. The tangled web of end-to-end sessions -- when implemented poorly -- can seem arbitrary and lead to many
+              sessions being juggled at one time, depending on the number of ND sessions a given node has with its neighbors.
+            </li>
+          </ul>
         </section>
 
-        <section anchor="summary-overview-chains">
-          <name>Reverse Hash Chains</name>
+        <section anchor="summary-overview-binding">
+          <name>Address Binding</name>
           <t>
-            Neighbor Discovery Sessions use two-way reverse hash chains to prove the ongoing exchange of all NUD or NDP Address Resolution
-            packets are still private between the two original interfaces. These reverse hash chains were first theoretically applied to IPv6
-            addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->. Chains are small and lightweight to compute, but
-            difficult to reverse or spoof thanks to the one-way nature of hashing functions.
+            Session information always includes both nodes' IP addresses and link-layer addresses used in the ND Address Resolution
+            process. In fact, this information -- along with other immutable session details -- is mixed into derived hash information
+            iteratively to enforce the binding of the session to these details.
           </t>
+        </section>
+
+        <section anchor="summary-overview-protection">
+          <name>Impersonation Protection</name>
           <t>
-            A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
-            value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to with some Counter value of iterations.
-            It is a public and essential value for verifying nodes to be aware of.
           </t>
-          <t>
-            The node creating the hash chain will be aware of its initial parameters. The first created hash is known as the 'Root Hash' and
-            is essential knowledge for deriving the rest of the chain values iteratively. The Root Hash then acts as a sort of 'password' to
-            the rest of the chain, so it MUST be kept secret until the session's chain is exhausted.
-          </t>
-          <t>
-            Nodes can prove communication with an honest and genuine host (who owns a link-layer address) by asking for a hash chain value
-            they do not know yet. And once the chain is exhausted, meaning either (1) the Root Hash would be next in line to reveal or (2) the
-            chain is about to expire, the Root Hash is subsequently revealed in order to set a NewHash value. The NewHash value is equivalent
-            to the FinalHash value of a new chain that is also CounterMax iterations in length.
-          </t>
-          <figure anchor="session-chaining">
-            <name>A Visualization of Hash Chaining</name>
-            <artwork type="ascii-art" name="hashChains.txt">
-              <![CDATA[
-R   =  [a pseudo-random secret]
-e   =  Expiration of the chain, in minutes.
-c   =  [some integer; 0 < c < 2^16]
+        </section>
+      </section>
+
+      <section anchor="summary-chains">
+        <name>Reverse Hash Chains</name>
+        <t>
+          Neighbor Discovery Sessions use two-way reverse hash chains to prove the ongoing exchange of all NUD or NDP Address Resolution
+          packets are still private between the two original nodes. These reverse hash chains were first theoretically applied to IPv6
+          addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->. Chains are small and lightweight to compute, but
+          difficult to reverse or spoof thanks to the one-way nature of hashing functions.
+        </t>
+        <t>
+          A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
+          value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to after some applied 'Counter' value
+          of iterations. The 'final hash' H<sub>counter</sub> is a public and essential value for verifying nodes to store persistently.
+        </t>
+        <t>
+          The node creating the hash chain will be aware of its initial parameters. The first computed hash is known as the 'Root Hash' and
+          is essential knowledge for deriving the rest of the chain links iteratively. The Root Hash then acts as a sort of 'password' to
+          the rest of the chain, so it MUST be kept secret until the session's chain is nearly exhausted.
+        </t>
+        <t>
+          Nodes can prove communication with an honest and genuine host within an established session by asking for a hash chain value
+          they do not know yet. And once the chain is exhausted, meaning either (1) the Root Hash would be next in line to reveal or (2) the
+          chain is about to expire, the Root Hash is subsequently revealed in order to set a NewHash value. The NewHash value is equivalent
+          to the FinalHash value of a new chain that is also CounterMax iterations in length.
+        </t>
+        <figure anchor="session-chaining">
+          <name>Hash Chaining in ND Sessions</name>
+          <artwork type="ascii-art" name="hashChains.txt">
+            <![CDATA[
+R   =  [a pseudo-random secret from an entropy source]
+e   =  Expiration value of the chain.
+c   =  Max iterations -> [some integer; 0 < c < 2^16]
  `----> A chain seeded by R using c total iterations,
          that expires after 'e' minutes.
 
-p   =  c || e (concatenation of 'c' & 'e' as decimal strings)
+A_t =  Address Resolution IPv6 Target Address.
+A_s =  Address Resolution IPv6 Source Address.
+L_t =  Target Link Layer Address.
+L_s =  Source Link Layer Address.
+
+p   =  c || e || A_t || A_s || [L_s or L_t]
 
 H_n+1 = SHA256(H_n || p)
 H_0  =  SHA256(R || p)
@@ -184,7 +257,12 @@ Holders of the Root Hash are always able to determine
           </artwork>
         </figure>
       </section>
+
 <!--       
+        <t>
+          In a two-way ND session, hosts are expected to exchange all required initial information for the corresponding node at the other
+          end of the session to verify submitted session details. Once 
+        </t>
         <t>
           The following list outlines some general requirements for two-way NDP Sessions:
         </t>
@@ -220,14 +298,8 @@ Holders of the Root Hash are always able to determine
           </artwork>
         </figure> -->
 
-      <section anchor="addenda-session-initiators">
+      <section anchor="summary-initiation">
         <name>Session Initiation</name>
-        <t>
-        </t>
-      </section>
-
-      <section anchor="addenda-session-recipients">
-        <name>Receiving New Sessions</name>
         <t>
         </t>
       </section>
@@ -236,6 +308,45 @@ Holders of the Root Hash are always able to determine
         <name>Intended Lifetimes</name>
         <t>
         </t>
+      </section>
+
+      <section anchor="summary-interfaces">
+        <name>Interface Configurations</name>
+        <t>
+          A set of three near-identical interface configuration modes is defined for both initiating sessions and accepting
+          initiations. These are kept delineated to allow a more granular configuration within networks; e.g., to accommodate
+          some form of transition to using ND Session options.
+        </t>
+        <t>
+          Interfaces are expected to operate in any one of three modes for SENDING or INITIATING new ND sessions, depending on the
+          implementation or configuration set by the operator:
+        </t>
+        <ul>
+          <li>
+            Ignore. Will not initiate sessions.
+          </li>
+          <li>
+            Gregarious. Always attempts session initiation, but has no problem if the receiver does not reciprocate.
+          </li>
+          <li>
+            Strict. Will always attempt session initiation when soliciting neighbors. Sessions are considered REQUIRED in
+            received Neighbor Advertisements from sent Solicitations with ND Session options.
+          </li>
+        </ul>
+        <t>
+          Likewise, interfaces are expected to choose any one of three modes for RECEIVING new ND session initiations from neighbors:
+        </t>
+        <ul>
+          <li>
+            Ignore. Disregards all ND session options intentionally and does not attempt to initiate any sessions.
+          </li>
+          <li>
+            Receptive. Will accept and respond to new session invitations, but does not require them.
+          </li>
+          <li>
+            Strict. Will REQUIRE sessions be initiated when receiving any Neighbor Solicitation packets directly.
+          </li>
+        </ul>
       </section>
     </section>
 
@@ -296,6 +407,10 @@ Holders of the Root Hash are always able to determine
             If the session is NOT perisistent: dictates the amount of time it takes without activity, in minutes, for the ND Session to expire.
             If the session IS persistent: dictates the same, but in units of hours instead.
           </dd>
+          <dt>SessionID</dt>
+          <dd>
+            A pseudo-random 32-bit identifier for a session between two nodes. This value MUST NOT change while a session is kept alive.
+          </dd>
           <dt>CounterMax</dt>
           <dd>
             Big-endian. The amount of times a secret Root Hash H<sub>0</sub> is iterated to produce the Final Hash H<sub>CounterMax</sub>. This
@@ -330,7 +445,7 @@ Holders of the Root Hash are always able to determine
       </section>
     </section>
     
-    <section anchor="Security">
+    <section anchor="security">
       <name>Security Considerations</name>
       <t>
         This section includes discussions on subjects related to the security of Neighbor Discovery Sessions.
@@ -339,7 +454,7 @@ Holders of the Root Hash are always able to determine
       </t>
 
       <section anchor="security-binding">
-        <name>Short-Term Proof of Ownership</name>
+        <name>Ephemeral Proof of Ownership</name>
         <t>
           <!-- TODO: ND Sessions provide short-term proof of ownership because malicious senders don't know root hash values. -->
         </t>
@@ -373,6 +488,8 @@ Holders of the Root Hash are always able to determine
       <name>References</name>
       <references>
         <name>Normative References</name>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml"/>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/>
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4861.xml"/>
       </references>
       <references>
