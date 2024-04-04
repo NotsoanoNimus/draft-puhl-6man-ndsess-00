@@ -560,7 +560,7 @@ If...
   C = 5
   S = "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
 
-Then...
+ Then...
   H_0 = SHA256(
          "gbvouewihng398p44fijmv3o" ||
          "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
@@ -574,24 +574,24 @@ Then...
 
 =========================================================
 VERIFIER'S PERSPECTIVE:
-| "All I know is..."
+ | "All I know is..."
     C    := 5
     S    := "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
     H_C  := H_5 = 7d730fee...4aac9926
 
-| "To prove identity, the sender tries to give me H_4.
-|   I wouldn't have known this value prior to getting it,
-|   because hashes are irreversible."
+ | "To prove identity, the sender tries to give me H_4.
+ |   I wouldn't have known this value prior to getting it,
+ |   because hashes are irreversible."
 
     H_4  := a050d6b5...4bdc3801
 
-| "If I iterate function 'H_n+1' from n = 4 up to n = C
-|   (1 iteration), then the resultant hash MUST match H_C."
+ | "If I iterate function 'H_n+1' from n = 4 up to n = C
+ |   (1 iteration), then the resultant hash MUST match H_C."
 
     H_5   = H_C = SHA256(H_4 || S) ==> 7d730fee...4aac9926
   
-| "The sender of H_4 clearly knows a hash I don't. It must
-|   be a host that knows the Root Hash. Valid!" (*)
+ | "The sender of H_4 clearly knows a hash I don't. It must
+ |   be a host that knows the Root Hash. Valid!" (*)
 
 * At this point, H_4 is no longer a valid proof of
     identity because it has been used. H_n where n < 4 is
@@ -608,5 +608,13 @@ VERIFIER'S PERSPECTIVE:
         not have any dependencies except the standard library.
       </t>
     </section>
- </back>
+
+    <section anchor="acknowledgements" numbered="false">
+      <name>Acknowledgements</name>
+      <t>
+        The author would like to thank Dr. Jinhua Guo of the University of Michigan for his valuable,
+        constructive criticisms and support of this document.
+      </t>
+    </section>
+  </back>
 </rfc>
