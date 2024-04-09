@@ -11,7 +11,7 @@
 
 <rfc
   xmlns:xi="http://www.w3.org/2001/XInclude"
-  category="exp"
+  category="std"
   docName="draft-puhl-6man-ndsess-00"
   ipr="trust200902"
   obsoletes=""
@@ -83,42 +83,111 @@
         is assumed henceforth.
       </t>
       <t>
-        Many of the terms in this document are defined in Section 2.1 of <xref target="RFC4861"/>, and will be noted accordingly.
+        To acquire necessary context, please see Section 2.1 of <xref target="RFC4861"/> for definitions of the following
+        terms used equivalently in this document: neighbor, node, interface, link, address, router, host, on-link, off-link,
+        IP, ICMP, packet, and target. It is very important to understand these terms before reading this document.
       </t>
-      <!-- <dl newline="true">
-      </dl> -->
+      <dl newline="true">
+        <dt>ND (sometimes NDP)</dt>
+        <dd>Neighbor Discovery (Protocol) <xref target="RFC4861"/>.</dd>
+
+        <dt>SEND</dt>
+        <dd>SEcure Neighbor Discovery <xref target="RFC3971"/>.</dd>
+
+        <dt>CGA</dt>
+        <dd>Cryptographically Generated Address <xref target="RFC3972"/>.</dd>
+
+        <dt>NDAR (sometimes AR)</dt>
+        <dd>The Neighbor Discovery Address Resolution process; see Section 7.2 of <xref target="RFC4861"/>.</dd>
+
+        <dt>NC</dt>
+        <dd>Neighbor Cache, as specified in Section 5.1 of <xref target="RFC4861"/>.</dd>
+
+        <dt>RS, RA, NS, and NA</dt>
+        <dd>A collection of abbreviations for ICMP packet types defined in NDP <xref target="RFC4861"/>.
+          Respectively: Router Solicitation, Router Advertisement, Neighbor Soliciation, and Neighbor Advertisement.</dd>
+
+        <dt>NUD</dt>
+        <dd>Neighbor Unreachability Detection (Section 7.3 of <xref target="RFC4861"/>).</dd>
+
+        <dt>LLID</dt>
+        <dd>A shorthand representation for the term "Link Layer Address" or "Link Layer Identifier".
+          Both terms are synonymous and describe any individual link-layer identifier for a network interface.</dd>
+
+        <dt>IID</dt>
+        <dd>Interface Identifier. The unique identifier of an interface on a network. See Section 2.5.1 of <xref target="RFC4291"/>.</dd>
+
+        <dt>SLLAO</dt>
+        <dd>Source Link-Layer Address Option. An ND option indicating the LLID of the packet sender or
+          NDAR initiator <xref target="RFC4861"/>.</dd>
+
+        <dt>TLLAO</dt>
+        <dd>Target Link-Layer Address Option. An ND option indicating the LLID of the NDAR target <xref target="RFC4861"/>.</dd>
+
+        <dt>DAD</dt>
+        <dd>Duplicate Address Detection (Section 5.4 of <xref target="RFC4862"/>).</dd>
+
+        <dt>SLAAC</dt>
+        <dd>Stateless Address Autoconfiguration <xref target="RFC4862"/>.</dd>
+
+        <dt>NDSO</dt>
+        <dd>Neighbor Discovery Session Option. An ND option either initiating or continuing an ND Session.</dd>
+
+        <dt>SP</dt>
+        <dd>Session Peer. The other link node that is participating in or establishing an NDSO, relative to the perspective of a
+          node being discussed or observed.</dd>
+
+        <dt>ZKPP</dt>
+        <dd>Zero Knowledge Password Proof. An authentication methodology that relies on the holder(s) of the password to prove
+          they have knowledge of it, without ever revealing the password itself.</dd>
+
+        <dt>HC</dt>
+        <dd>Hash Chain. A cryptographic primitive consisting of a Root Hash that is iterated a fixed amount of times to create a
+          Final Hash. The Final Hash represents the ultimate 'link' in the full chain of intermediate hashes from the Root Hash.</dd>
+
+        <dt>RHCR</dt>
+        <dd>Reverse Hash Chain Revealing. A piece-by-piece, backward revelation of components comprising a hash chain. Used for
+          ZKPP in maintaining ongoing ND Sessions.</dd>
+
+        <dt>RH</dt>
+        <dd>Root Hash. The very first hash in a hash chain which is derived from a pseudo-random initial value. This hash represents
+          the 'password' of the chain and is often used in this specification to establish the next hash chain for a session.</dd>
+
+        <dt>FH</dt>
+        <dd>Final Hash. The last hash in a hash chain which is given to external verifiers to store for ZKPP. This value is never
+          used as a proof of knowledge of the Root Hash, and is only used for RHCR verifications.</dd>
+      </dl>
     </section>
 
     <section anchor="summary">
       <name>Neighbor Discovery Sessions</name>
       <t>
-        This section defines the purpose, goals, and mechanisms underlying end-to-end ND sessions.
+        This section defines the purposes, goals, and mechanisms motivating end-to-end ND sessions.
       </t>
 
       <section anchor="summary-overview">
         <name>Design Overview</name>
         <t>
           ND sessions are a "weak" security solution driven by cryptographic hashing. They trade simplicity, ease of use, and
-          first-come-first-serve trust for a lack of complex public-key cryptography, infrastructure, signatures, etc. They
-          are used to bind two exchanged, perishable secrets to a specific Neighbor Discovery Address Resolution exchange
-          between two nodes on the same network. The revelation of a secret causes its immediate expiration.
+          first-come-first-serve trust for a lack of complex public-key cryptography, infrastructure, signatures, et al. They
+          are used to bind two exchanged, perishable secrets to a specific NDAR exchange between two nodes on the same network.
+          The revelation of a secret causes its immediate expiration. ND Sessions DO NOT guarantee the ownership of an IP address.
+          They only guarantee the legitimacy of NDAR and NUD packets exchanged within an established, ongoing session.
         </t>
         <t>
-          It is important to note: sessions DO NOT guarantee the ownership of an IP address. They only guarantee the legitimacy
-          of ND Address Resolution and NUD packets exchanged within an established, ongoing session.
+          Numerous suggestions have been made in the past to bind LLIDs to their interface IP addresses without requiring
+          public-key cryptography <!-- ref? -->. These suggestions still find themselves
+          vulnerable to Identity Assumption attacks on unsecure link layers. These attacks occur when a node goes off-link
+          (either removed from the network maliciously, or by moving away) and a malicious node becomes free to assume its LLID,
+          thus circumventing such address bindings. When this happens, malicious nodes are liberated to falsify and redirect NDP
+          traffic in on-path attacks, even for solutions that rely on LLID-to-IP bindings.
         </t>
         <t>
-          Numerous suggestions have been made in the past to bind link-layer addresses to their IP addresses without requiring
-          public-key cryptography <!-- ref? -->. But these suggestions are still
-          vulnerable to identity assumption attacks, where a node can be 'killed' (removed from the network maliciously) and the
-          malicious node is free to assume its link-layer identifier, thus circumventing such address bindings. When this
-          happens, malicious nodes become just as liberated as ever to falsify and redirect NDP traffic in on-path attacks.
-        </t>  
-        <t>
-          To mitigate this, two hosts can establish private, unicast-only hash chains that can be used to prove each other's
+          To mitigate this, two hosts can establish private, unicast-only hash chains which can be used to prove each other's
           identities over a long-term and ongoing session. Hash chains are refreshed at random and each of the two participating
-          hosts maintain their own 'perspective' of the session. Employing this cryptographic primitive allows the hosts entered
-          into a session to identify when the other node has been 'killed' and to act accordingly.
+          hosts maintain their own 'perspective' of the session. Employing this cryptographic primitive allows the peer nodes in
+          a session to identify when the session neighbor is being impersonated and to act accordingly. Expiration timers for sessions
+          also permit peer link-layer addresses to be used again by new nodes in busy networks where neighbors may be more ephemeral.
         </t>
 
         <section anchor="summary-overview-goals">
@@ -128,48 +197,49 @@
           </t>
           <ul>
             <li>
-              Identification. A session established with a legitimate node is guaranteed to be legitimate through its duration,
-              potentially ad infinitum if it is consistently refreshed. Any malicious node cannot spoof the Address Resolution
-              results of a neighbor already engaged in a set of ND sessions.
+              Identification. A session established with a legitimate node is guaranteed to be continually legitimate through its
+              duration, potentially ad infinitum if it is regularly refreshed. Any malicious node cannot spoof or inject themselves
+              into the AR exchange of two neighbors already engaged in an ND Session.
             </li>
             <li>
-              Simplicity. No reliance on public-key cryptography or Public-Key Infrastructure is highly preferred, as such
-              complexities have resulted in previous proposals 
+              Simplicity. No reliance on public-key cryptography or Public-Key Infrastructure is highly preferred, as extra
+              complexities brought by these tools have in the past resulted in slow deployment for various ND solutions.
             </li>
             <li>
-              Performance. A static reliance on SHA-256 and very simple concatenate-and-iterate movements lends itself to
+              Performance. A fixed reliance on SHA-256 and very simple concatenate-and-iterate movements lends itself to
               drastically improved performance on embedded systems participating in sessions. SHA-256 is perhaps one of the most
-              ubiquitous and well-known hashing algorithms <!-- ref -->, while also being significantly collision-resistant <!-- ref -->.
+              ubiquitous hashing algorithms <!-- ref -->,
+              while also being significantly collision-resistant <!-- ref -->.
             </li>
             <li>
               Privacy. Sessions are end-to-end and do not rely on a centralized infrastructure to communicate registration
-              information or other parameters. The use of hash chains ensures the privacy and protection of root session passwords
-              at all times.
+              information or other parameters. The use of RHCR ensures the privacy and protection of root session passwords
+              at all times, while also preventing packet replays to each session peer.
             </li>
             <li>
-              Flexibility. Nodes can opt into or out of sessions at any time by simply disregarding packet options, depending on
+              Flexibility. Nodes can opt into or out of sessions at any time by disregarding packet options, depending on
               their interface configuration and implementation.
             </li>
           </ul>
           <t>
-            These goals must necessarily be accomplished by the trading off of some other features granted by more complex solutions.
-            Drawbacks of using ND session options, as opposed to more mature specifications, includes:
+            These goals must necessarily be accomplished by trading off some other features granted by more complex solutions.
+            Drawbacks of using NDSOs, as opposed to more mature specifications, include:
           </t>
           <ul>
             <li>
               Temporality. Expirations are imposed on sessions after considerably long (and adjustable) durations. Any malicious node
               taking advantage of a session expirations could successfully snipe link sessions and therefore lock out legitimate hosts
-              from communicating using the resolved Target Address. This will be explained further in <xref target="security"/>.
+              from communicating using the resolved Target Address. <xref target="security"/> explores this in more detail.
             </li>
             <li>
-              Disconnectedness. Any participant of a session who is either (1) maliciously locked out of a session by letting it expire,
-              or (2) fails to persist session details properly, will suffer from a long-term state of disconnection from the peer whom
-              it was entered into a session with. This is because the other end of the session is not allowed to permit flexibility in
-              establishing new sessions with the same IP and link-layer address combination.
+              Disconnectedness. Any participant of a session who is either (1) maliciously locked out of it by letting it expire,
+              or (2) failing to persist session details properly, will suffer from a long-term state of disconnectedness from the previous
+              session peer. This is because the other end of the session cannot permit flexibility in establishing new sessions with the
+              same IP and link-layer address combinations.
             </li>
             <li>
-              Disorganization. The tangled web of end-to-end sessions -- when implemented poorly -- can seem arbitrary and lead to many
-              sessions being juggled at one time, depending on the number of ND sessions a given node has with its neighbors.
+              Disorganization. A tangled web of end-to-end sessions, when implemented poorly, can seem arbitrary and lead to many
+              sessions being juggled by an interface at one time, depending on the number of sessions a given node has with its neighbors.
             </li>
           </ul>
         </section>
@@ -193,15 +263,16 @@
       <section anchor="summary-chains">
         <name>Reverse Hash Chains</name>
         <t>
-          Neighbor Discovery Sessions use two-way reverse hash chains to prove the ongoing exchange of all NUD or NDP Address Resolution
-          packets are still private between the two original nodes. These reverse hash chains were first theoretically applied to IPv6
-          addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->. Chains are small and lightweight to compute, but
-          difficult to reverse or spoof thanks to the one-way nature of hashing functions.
+          Neighbor Discovery Sessions use two-way RHCR to prove the ongoing exchange of all NUD or NDAR packets are still transacted between
+          the two original nodes. These reverse hash chains were first theoretically applied to IPv6
+          addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->.
+          Chains are small and lightweight, but difficult to break thanks to the one-way nature of hashing functions.
         </t>
         <t>
           A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
           value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to after some applied 'Counter' value
-          of iterations. The 'final hash' H<sub>counter</sub> is a public and essential value for verifying nodes to store persistently.
+          of iterations. The 'final hash' H<sub>counter</sub> is a public and essential ZKPP value for the verifying session peer to store
+          persistently.
         </t>
         <figure anchor="session-chaining">
           <name>Hash Chaining in ND Sessions</name>
@@ -217,8 +288,10 @@ A_t =  Address Resolution IPv6 Target Address.
 A_s =  Address Resolution IPv6 Source Address.
 L_t =  Target Link Layer Address.
 L_s =  Source Link Layer Address.
+<!-- TODO! Why not just use the SessionID instead of these? -->
 
 p   =  c || e || A_t || A_s || [L_s or L_t]
+  (where '||' represents a binary concatenation)
 
 H_n+1 = SHA256(H_n || p)
 H_0  =  SHA256(R || p)
@@ -372,22 +445,24 @@ Holders of the Root Hash are always able to determine
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   |     Type      |    Length     |P|N|A| Reserved|   Expiration  |
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                            Reserved                           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   |                           SessionID                           |
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   |           CounterMax          |            Counter            |
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  |                          CurrentHash                          |
+  >                           FinalHash                           <
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  |                           FinalHash                           |
+  >                          CurrentHash                          <
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  |                            NewHash                            |
+  >                            NewHash                            <
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
             ]]>
           </artwork>
         </figure>
         <dl newline="true">
           <dt>Type</dt><dd>65</dd>
-          <dt>Length</dt><dd>3. The total length of the Session option from the Type through its end -- inclusive -- in units of 8 octets.</dd>
+          <dt>Length</dt><dd>14. The total length of the Session option from the Type through its end -- inclusive -- in units of 8 octets.</dd>
           <dt>P</dt>
           <dd>
             Persistent bit. When this is a new session, indicates the exchange is intended to establish a long-term, ongoing ND Session.
@@ -425,8 +500,8 @@ Holders of the Root Hash are always able to determine
             the FinalHash. If this value is set to 0, then the CurrentHash MUST be set to the chain's Root Hash and NewHash MUST be the new
             FinalHash value of the next chain with the same CounterMax iterations length.
           </dd>
-          <dt>CurrentHash</dt><dd>The input hash which, when iterated by SHA-256 Counter times, will produce the FinalHash.</dd>
           <dt>FinalHash</dt><dd>The Final Hash from the set computed with Counter SHA-256 iterations.</dd>
+          <dt>CurrentHash</dt><dd>The input hash which, when iterated by SHA-256 Counter times, will produce the FinalHash.</dd>
           <dt>NewHash</dt>
           <dd>
             When CurrentHash equals the Root Hash of the current chain and Counter is equal to CounterMax, this value MUST be a new
@@ -481,9 +556,15 @@ Holders of the Root Hash are always able to determine
       <section anchor="security-dos">
         <name>Denial of Service</name>
         <t>
-          This brief section discusses concerns about potential denial of service attack vectors when
-          employing ND Sessions.
+          This brief section discusses concerns about potential denial of service attack vectors when employing ND Sessions.
         </t>
+
+        <section anchor="security-dos-bogus">
+          <name>Bogus Session Option Replies</name>
+          <t>
+            <!-- DoS attack might send a bunch of crafted bogus NDSOs to keep setting the NC entry to STALE. -->
+          </t>
+        </section>
       </section>
     </section>
     
@@ -495,7 +576,7 @@ Holders of the Root Hash are always able to determine
         Control Message Protocol version 6 (ICMPv6) Parameters" registry.
       </t>
       <ul>
-        <li>The Session option, described in <xref target="addenda-session"/>.</li>
+        <li>The Session option (65), described in <xref target="addenda-session"/>.</li>
       </ul>
     </section>
   </middle>
@@ -555,7 +636,7 @@ GENERATOR'S PERSPECTIVE:
 H_0   := SHA256(R || S)   <--- Root Hash
 H_n+1 := SHA256(H_n || S)
 
-If...
+ If...
   R = "gbvouewihng398p44fijmv3o"
   C = 5
   S = "2001:db8::1234:5678/aa-bb-cc-00-11-22/5"
@@ -607,13 +688,219 @@ VERIFIER'S PERSPECTIVE:
         This section contains various sample code snippets related to this document. All code is written in C and does
         not have any dependencies except the standard library.
       </t>
+
+      <section anchor="appendix-code-chain">
+        <name>Data Structures &amp; Methods</name>
+        <t>
+          Source code in this section defines some data structures and methods related to functions within this document.
+          These are intended to be examples only.
+        </t>
+        <figure anchor="code-chain-struct">
+          <name>Data Structures Related to NDSOs</name>
+          <sourcecode type="c" markers="false" name="ndsoStructures.c">
+            <![CDATA[
+/* A HC with fields the password holder knows. */
+typedef struct hash_chain {
+    uint8_t *_seed;  /* R */
+    uint8_t _seed_length;   /* len(R) */
+    uint8_t _root_hash[32];   /* RH */
+    uint8_t final_hash[32];   /* FH */
+    uint16_t length;    /* c */
+} hash_chain_t;
+
+/* A HC with fields verifiers need to know. */
+typedef struct verification_hash_chain {
+    uint8_t final_hash[32];   /* FH */
+    uint16_t length;   /* c */
+} verify_hash_chain_t;
+
+/* Represents a structure which MUST be preserved in
+    persistent storage by session peers. */
+typedef struct nd_session {
+    ndc_entry_t *assoc_cache_entry;   /* NC entry */
+    hash_chain_t *my_chain;   /* HC(self) */
+    verify_hash_chain_t *peer_chain;   /* HC(peer) */
+    uint16_t current_link;   /* c-x */
+    uint32_t id;   /* SessionID */
+    bool persistent;   /* Is Persistent? */
+    uint8_t expiration;   /* e */
+} nd_session_t;
+
+/* Structure of a raw ND Session option. */
+typedef struct ndsess_pkt {
+    uint8_t type;   /* Always 65 */
+    uint8_t length;   /* Always 14 */
+    uint8_t flags;   /* P, N, A, Reserved */
+    uint8_t expiration;   /* e */
+    uint32_t id;   /* SessionID */
+    uint16_t current_chain_length;   /* c */
+    uint16_t current_chain_link;   /* x */
+    uint8_t final_chain_hash[32];   /* H_c */
+    uint8_t current_link_hash[32];   /* H_x */
+    uint8_t new_chain_final_hash[32];   /* new H_c */
+}__attribute__((packed)) nd_session_option_t;
+            ]]>
+          </sourcecode>
+        </figure>
+        <figure anchor="code-chain-methods">
+          <name>Some Methods Related to Hash Chaining</name>
+          <sourcecode type="c" markers="false" name="hcMethods.c">
+            <![CDATA[
+hash_chain_t *hash_chain__create(void *salt, uint16_t iterations);
+void hash_chain__destroy(hash_chain_t **chain);
+void hash_chain__iterate(void *res_buffer, void *salt,
+                         uint8_t *src_hash, uint16_t iterations);
+
+
+hash_chain_t *hash_chain__create(void *salt, uint16_t iterations)
+{
+    hash_chain_t *chain = calloc(1, sizeof(hash_chain_t));
+    chain->_seed = calloc(32, sizeof(uint8_t));
+    chain->_seed_length = 32;
+    chain->length = iterations;
+
+    for (int i = 0; i < 8; ++i)
+        chain->_seed[i*4] = GET_RANDOM();
+
+    calc_sha256(chain->_seed, chain->_seed_length, &(chain->_root_hash));
+    hash_chain__iterate(&(chain->final_hash),
+                        salt,
+                        &(chain->_root_hash),
+                        iterations);
+}
+
+
+void hash_chain__destroy(hash_chain_t **chain)
+{
+    if (NULL == chain) return;
+
+    free((*chain)->_seed);
+    free(*chain);
+    
+    *chain = NULL;
+}
+
+
+void hash_chain__iterate(void *res_buffer,
+                         void *salt,
+                         uint8_t *src_hash,
+                         uint16_t iterations)
+{
+    uint8_t working_buffer[36] = {0};
+    memcpy(working_buffer, src_hash, 32);
+
+    /* For this specification, the salt is the 32-bit SessionID. */
+    memcpy((working_buffer + 32), salt, 4);
+    
+    while (iterations--) {
+        /* Use the working_buffer as the data source at 36
+            bytes long and res_buffer as a destination for
+            the hash output. */
+        calc_sha256(working_buffer, 36, res_buffer);
+        memcpy(working_buffer, res_buffer, 32);
+    }
+}
+            ]]>
+          </sourcecode>
+        </figure>
+      </section>
+
+      <section anchor="appendix-code-verify">
+        <name>Processing Incoming Session Options</name>
+        <t>
+          Source code in this section is a hypothetical application of the previous section's data structures for
+          ZKPP verifiers using NDSOs.
+        </t>
+
+        <figure anchor="code-ndsess">
+          <name>Code for Processing Incoming Session Options</name>
+          <sourcecode type="c" markers="false" name="ndsoProcessing.c">
+            <![CDATA[
+bool nd_session__validate_zkpp(nd_session_t *sess)
+{
+    uint8_t resulting_hash[32] = {0};
+    uint16_t iters = sess->peer_chain->length
+                        - sess->current_link;
+
+    hash_chain__iterate(&resulting_hash[0],
+                        &(sess->id),
+                        &(sess->current_link_hash[0]),
+                        iters);
+
+    uint8_t *cursor_left = &resulting_hash[0];
+    uint8_t *cursor_right
+        = &(sess->peer_chain->final_hash[0]);
+
+    return (0 == memcmp(cursor_left, cursor_right, 32));
+}
+
+
+int process_ndsess(ndc_entry_t *cache_entry,
+                   nd_session_option_t *ndso_raw)
+{
+    /* ... [check fields and validate the option] ... */
+    /* Get the session by ID. */
+    nd_session_t *sess = nd_session__from_id(ndso_raw->id);
+
+    /* Behavior branches if the 'N' bit is set. */
+    if (ndso_raw->flags & (1 << 6)) {
+        if (NULL != sess)
+            return ND_ERR; /* Reject if sess exists. */
+        
+        /* [new nd_session_t, couple w/ cache_entry] */
+        return ND_OK;
+    }
+
+    /* If no session by now, nothing left to do. */
+    if (NULL == sess) return ND_NOSESS;
+
+    /* Check if session is paired with this NC entry. */
+    if (NULL == sess->assoc_cache_entry
+        || cache_entry != sess->assoc_cache_entry
+    ) return ND_ERR;
+
+    /* Incoming link value MUST be lower than current. */
+    if (ndso_raw->current_chain_link >= sess->current_link)
+        return ND_ERR;
+
+    /* The FinalHash value CANNOT change. */
+    if (0 != memcmp(&(ndso_raw->final_chain_hash[0])
+                    &(sess->peer_chain->final_hash[0]),
+                    32)
+    ) return ND_ERR;
+
+    /* Validate the incoming ZKPP hash. */
+    sess->current_link = ndso_raw->current_chain_link;
+    if (!nd_session__validate_zkpp(sess))
+        return ND_ERR;
+
+    /* If it's the Root Hash, special branching... */
+    if (0 == ndso_raw->current_chain_link) {
+        if (!ndso__new_hash_has_data(ndso_raw))
+            return ND_ERR;
+
+        /* [update sess to reflect the new peer_chain] */
+    }
+
+    /* If flow gets here, things are valid. Update them. */
+    ndso__copy_into_sess(ndso_raw, sess);
+
+    /* Persist the NC and session then be done. */
+    _nc_update(cache_entry, /* ... */);
+    nd_session__save_and_persist(sess, cache_entry);
+    return ND_OK;
+}
+            ]]>
+          </sourcecode>
+        </figure>
+      </section>
     </section>
 
     <section anchor="acknowledgements" numbered="false">
       <name>Acknowledgements</name>
       <t>
         The author would like to thank Dr. Jinhua Guo of the University of Michigan for his valuable,
-        constructive criticisms and support of this document.
+        constructive feedback and support of this document.
       </t>
     </section>
   </back>
