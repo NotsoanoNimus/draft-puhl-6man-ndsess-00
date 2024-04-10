@@ -46,7 +46,13 @@
     <keyword>ownership</keyword>
     <abstract>
       <t>
-        <!-- TODO! -->
+        Neighbor Discovery Protocol over an unsecure link layer does not allow neighbors to assert their identities
+        between updates. Neighbor Cache entries can be overridden by malicious parties seeking to redirect or deny
+        service to neighbors in attacks of trivial difficulty. Various protocols have been proposed or ratified using
+        public-key cryptography to provide proof of identity, but due to their complexities or other factors they have
+        not been widely integrated. Neighbor Discovery Session options use first-come-first-serve Zero-Knowledge Password
+        Proof techniques to assert node identities in an end-to-end, opt-in process, without requiring complex
+        infrastructure or a secured link layer.
       </t>
     </abstract>
   </front>
@@ -137,9 +143,12 @@
         <dd>Interface Configuration Mode. One of three different ND Session operating modes specifying the behavior of an
           interface when sending or receiving ND packets.</dd>
 
+        <dt>SI</dt>
+        <dd>Session Interface. The node being discussed or observed in a session.</dd>
+
         <dt>SP</dt>
         <dd>Session Peer. The other link node that is participating in or establishing an NDSO, relative to the perspective of a
-          node being discussed or observed.</dd>
+          node being discussed or observed (the Session Interface).</dd>
 
         <dt>ZKPP</dt>
         <dd>Zero Knowledge Password Proof. An authentication methodology that relies on the holder(s) of the password to prove
@@ -188,10 +197,10 @@
         </t>
         <t>
           To mitigate this, two nodes can establish private, unicast-only hash chains which can be used to prove each other's
-          identities over a long-term and ongoing session. Hash chains are refreshed at random and each of the two participating
-          nodes maintain their own 'perspective' of the session. Employing this cryptographic primitive empowers a session node to
+          identities over a long-term and ongoing session. Hash chains are refreshed when required and each of the two participating
+          nodes maintain their own perspectives of the session. Employing this cryptographic primitive empowers a session node to
           identify when the SP is being impersonated and to act accordingly. Adjustable session expiration windows
-          also allow peer link-layer addresses to be recycled by new nodes in busy networks where neighbors may be more ephemeral.
+          also allow peer link-layer addresses to be recycled to new nodes in busy networks where neighbors may be more ephemeral.
         </t>
 
         <section anchor="summary-overview-goals">
@@ -272,14 +281,15 @@
           <name>Hash Chaining in ND Sessions</name>
           <artwork type="ascii-art" name="hashChains.txt">
             <![CDATA[
-R  :=  [a pseudo-random secret from an entropy source]
+R  :=  A pseudo-random secret from an entropy source.
 e  :=  Expiration value of the session.
 i  :=  The current or tentative SessionID.
-c  :=  Max iterations -> [some integer; 0 < c < 2^16]
+L  :=  The current Link-Layer ID of the sending interface.
+c  :=  Max iterations -> [some integer; 0 < c < 2^16].
  `----> A chain seeded by R using c total iterations,
          that expires after 'e' minutes.
 
-p  :=  c || e || i
+p  :=  c || e || i || L
   (where '||' represents a binary concatenation)
 
 H_n+1 = SHA256(H_n || p)
@@ -309,17 +319,26 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
         <t>
           Nodes can prove communication with an honest and genuine SP during a session by asking for an intermediate hash value
-          they do not know yet. And once the chain is finished -- meaning (1) the RH would be next in line to reveal, (2) the RH is
-          going to be intentionally given in order to move to a new HC early, or (3) the session is about to expire -- the RH is
-          subsequently revealed in order to set a NewHash value. The NewHash value is equivalent to the FinalHash value of a new
-          HC that is CounterMax iterations in length.
+          they do not know yet. And once the chain is finished (see below), the RH MUST be revealed in the next NDSO in order to
+          set a NewHash value. The NewHash value is equivalent to the FinalHash value of a new HC that is CounterMax iterations
+          in length.
         </t>
         <t>
-          More explicitly stated for HCs,
+          More explicitly stated for <xref target="session-chaining"/>,
           holders of the RH are always able to determine any value of <tt>H_t</tt> where <tt>{0 &lt;= t &lt;= c}</tt>.
           Receivers who know some intermediate hash <tt>H_x</tt>, where <tt>{0 &lt; x &lt;= c}</tt>, are only able to derive
           <tt>H_y</tt> where <tt>{x &lt;= y &lt;= c}</tt>.
         </t>
+        <t>
+          A Hash Chain MUST be considered 'finished' when any of the following are true:
+        </t>
+        <ul>
+          <li>The current session Counter is at 1, meaning 0 (the RH) is next in line.</li>
+          <li>The LLID of the sending interface has changed, and the change is tentative for the NDAR exchange with the SP.</li>
+          <li>The sender decides the chain should be refreshed. Implementations SHOULD do this at random when the Counter value
+            reaches 10% or less of the CounterMax value of the current session.</li>
+          <li>The session itself is about to expire or needs to be forcibly refreshed otherwise.</li>
+        </ul>
         <t>
           See <xref target="appendix-chain"/> for more specific details about RHCR and authentication.
         </t>
@@ -363,7 +382,23 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             <![CDATA[
             ]]>
           </artwork>
-        </figure> -->
+        </figure>
+        <t>
+          An ND Session is a long-term exchange bound to one single instance of NDAR between a set of LLIDs and IP addresses.
+          Changing any of those four variables will necessitate a new Session be formed. A per-session,
+          random password is chosen on each session node, whose hash value is repeatedly iterated with a salt value consisting of
+          session variables and then given to the session peer. Nodes can prove knowledge of their initial passwords in each ND
+          message by slowly revealing each one-time-use 'ancestor' hash in the iteration chain, going back to the Root Hash. See
+          the specification <!- ref -> for more information about the inner workings of ND Sessions.
+        </t>
+        <t>
+          ZKPP-based sessions therefore provide strong protection against Identity Assumption attacks occurring in the middle
+          of a communication between two neighbors. They are still susceptible to impersonations at the very start of the ND
+          Session, but this would require a very opportunistic and reactive attacker, since Sessions can last up to days at a time
+          without any update. Implementing ND Session options with VBAs, then, simply (again) shims the NDAR process with
+          Session options. Such implementations <bcp14>SHOULD</bcp14> always validate the underlying session BEFORE processing any VBA verifications.
+        </t>
+      -->
 
       <section anchor="summary-initiation">
         <name>Session Initiation</name>
@@ -372,7 +407,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       </section>
 
       <section anchor="summary-lifetimes">
-        <name>Intended Lifetimes</name>
+        <name>Intended Lifetimes &amp; Expirations</name>
         <t>
         </t>
       </section>
@@ -484,8 +519,18 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dd>Space reserved for future use. This value MUST be initialized to 0 by senders and MUST be ignored by receivers.</dd>
           <dt>Expiration</dt>
           <dd>
-            If the session is NOT perisistent: dictates the amount of time it takes without activity, in minutes, for the ND Session to expire.
-            If the session IS persistent: dictates the same, but in units of hours instead.
+            <t>
+              Dictates the amount of time taken for the ND Session to expire when no session activity occurs. 'Expiration' means storage
+              of session parameters and associations to NC entries MUST be destroyed in order to invalidate the session from continuing.
+            </t>
+            <ul spacing="compact">
+              <li>
+                If the session IS NOT perisistent: this field MUST be measured in minutes.
+              </li>
+              <li>
+                If the session IS persistent: this field MUST be measured in hours.
+              </li>
+            </ul>
           </dd>
           <dt>SessionID</dt>
           <dd>
@@ -642,6 +687,7 @@ GENERATOR'S PERSPECTIVE:
   c   := A maximum iterations count.
   e   := Expiration value of the session.
   i   := The current or tentative SessionID.
+  L   := The current or tentative LLID of the sender.
   p   := A fixed Salt value using C and other constants.
 
 H_0   := SHA256(R || p)    <--- Root Hash
@@ -650,12 +696,14 @@ H_n+1 := SHA256(H_n || p)  <--- Intermediate Hashes
  If...
   R  =  "gbvouewihng398p44fijmv3o"
   c  =  5
-  p  =  c || e || i  =  5 || 23 || 734453247
+  p  =  c || e || i || L
+         `--> 5 || 23 || 734453247 || 11-22-33-44-55-66
 
  Then...
   H_0 = SHA256(
          "gbvouewihng398p44fijmv3o" ||
-         {0x05, 0x17, 0x2B, 0xC6, 0xDD, 0xFF}
+         {0x05, 0x17, 0x2B, 0xC6, 0xDD, 0xFF, 0x11, 0x22,
+            0x33, 0x44, 0x55, 0x66}
         )
       = c36b2c9a...bc901395
 
@@ -666,24 +714,28 @@ H_n+1 := SHA256(H_n || p)  <--- Intermediate Hashes
 
 =========================================================
 VERIFIER'S PERSPECTIVE:
- | "All I know is..."
+ | "What I know is..."
     c    :=  5
-    p    :=  {0x05, 0x17, 0x2B, 0xC6, 0xDD, 0xFF}
+    e    :=  23
+    L    :=  11-22-33-44-55-66
     H_c  :=  H_5  =  7d730fee...4aac9926
 
- | "To prove identity, the sender tries to give me H_4.
- |   I wouldn't have known this value prior to getting it,
- |   because hashes are irreversible."
+ | "I can also construct the Salt..."
+    p    :=  {0x05, 0x17, ..., 0x66}
+
+ | "To prove its identity, the Session Peer should send H_4.
+ |   I wouldn't know this value prior to getting it, because
+ |   hashes are irreversible."
 
     H_4  := a050d6b5...4bdc3801
 
  | "If I iterate function 'H_n+1' from n = 4 up to n = c
  |   (1 iteration), then the resultant hash MUST match H_c."
 
-    H_5   = H_c = SHA256(H_4 || S) ==> 7d730fee...4aac9926
+    H_5   = H_c = SHA256(H_4 || p)  ==>  7d730fee...4aac9926
   
- | "The sender of H_4 clearly knows a hash I don't. It must
- |   be a host that knows the Root Hash. Valid!" (*)
+ | "The sender of H_4 clearly knows a hash I do not. It is
+ |   probably a host that knows the Root Hash. Valid!" (*)
 
  * At this point, H_4 is no longer a valid proof of
     identity because it has been used. H_n where n < 4 is
