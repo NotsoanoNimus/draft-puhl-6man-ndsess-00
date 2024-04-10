@@ -596,6 +596,10 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       </references>
       <references>
         <name>Informative References</name>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4291.xml"/>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4862.xml"/>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3971.xml"/>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3972.xml"/>
       </references>
       <!-- <references>
         <name>Informative References</name>
@@ -769,7 +773,10 @@ hash_chain_t *hash_chain__create(void *salt, uint16_t iterations)
     for (int i = 0; i < 8; ++i)
         chain->_seed[i*4] = GET_RANDOM();
 
-    calc_sha256(chain->_seed, chain->_seed_length, &(chain->_root_hash));
+    calc_sha256(chain->_seed,
+                chain->_seed_length,
+                &(chain->_root_hash));
+
     hash_chain__iterate(&(chain->final_hash),
                         salt,
                         &(chain->_root_hash),
