@@ -191,11 +191,11 @@
         </t>
         <t>
           Numerous suggestions have been made in the past to bind LLIDs to their interface IP addresses without requiring
-          public-key cryptography <!-- ref? -->. These suggestions still find themselves
-          vulnerable to Identity Assumption attacks on unsecure link layers. These attacks occur when a node goes off-link
-          (either removed from the network maliciously, or by moving away) and a malicious node becomes free to assume its LLID,
-          thus circumventing such address bindings. When this happens, malicious nodes are liberated to falsify and redirect NDP
-          traffic in on-path attacks.
+          public-key cryptography (a great example being the SAVI Framework's use of 'binding anchors' <xref target="RFC7039"/>).
+          However, many suggestions still find themselves lacking adoption or vulnerable to Identity Assumption attacks on
+          unsecure link layers. These attacks occur when a node goes off-link (either removed from the network maliciously,
+          or by moving away) and a malicious node becomes free to assume its LLID, thus circumventing such address bindings.
+          When this happens, malicious nodes are liberated to falsify and redirect NDP traffic in on-path attacks.
         </t>
         <t>
           To mitigate this, two nodes can establish private, unicast-only hash chains which can be used to prove each other's
@@ -223,8 +223,8 @@
             <li>
               Performance. A fixed reliance on SHA-256 and very simple concatenate-and-iterate movements lend themselves to
               drastically improved session performance on participating embedded systems. SHA-256 is perhaps one of the most
-              ubiquitous hashing algorithms <!-- ref -->,
-              while also being significantly collision-resistant <!-- ref -->.
+              ubiquitous hashing algorithms, while also being significantly collision-resistant
+              (Section 4 of <xref target="SP.800-107.R1"/>).
             </li>
             <li>
               Privacy. Sessions are end-to-end and do not rely on a centralized infrastructure to communicate registration
@@ -271,9 +271,9 @@
         <name>Reverse Hash Chains</name>
         <t>
           ND Sessions use two-way RHCR to prove the ongoing exchange of all NUD or NDAR packets are still transacted between
-          the two original session nodes. These reverse HCs were first theoretically applied to IPv6
-          addresses in <!-- https://link.springer.com/chapter/10.1007/3-540-45807-7_3 -->.
-          Chains are small and lightweight, but difficult to break thanks to the one-way nature of hashing functions.
+          the two original session nodes. These reverse HCs were first theoretically applied to IPv6 addresses in Section 4.2 of
+          <xref target="NIKANDER"/>. Chains are small and lightweight, but difficult to break thanks to the one-way nature of
+          hashing functions.
         </t>
         <t>
           A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
@@ -777,10 +777,31 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </reference>
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4291.xml"/> <!-- IPv6 Addr Architecture -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3756.xml"/> <!-- IPv6 ND Trust Models, Threats -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.7039.xml"/> <!-- SAVI Framework -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3971.xml"/> <!-- SEND -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3972.xml"/> <!-- CGA -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml"/> <!-- BCP14 keywords -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/> <!-- BCP14 ambiguities -->
+        <reference anchor="NIKANDER" target="https://doi.org/10.1007/3-540-45807-7_3">
+          <front>
+            <title>Denial-of-Service, Address Ownership, and Early Authentication in the IPv6 World</title>
+            <author fullname="Pekka Nikander" initials="P." surname="Nikander">
+              <organization>Ericsson Research</organization>
+            </author>
+            <date year="2002" month="January"/>
+          </front>
+          <seriesInfo name="DOI" value="10.1007/3-540-45807-7_3"/>
+        </reference>
+        <reference anchor="SP.800-107.R1" target="https://doi.org/10.6028/NIST.SP.800-107r1">
+          <front>
+            <title>Recommendation for Applications Using Approved Hash Algorithms</title>
+            <author>
+              <organization>National Institute of Standards and Technology</organization>
+            </author>
+            <date year="2012" month="August"/>
+          </front>
+          <seriesInfo name="DOI" value="10.6028/NIST.SP.800-107r1"/>
+        </reference>
       </references>
     </references>
 
