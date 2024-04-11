@@ -79,6 +79,20 @@
           all capitals, as shown here.
         </t>
       </section>
+
+      <section anchor="intro-background">
+        <name>Background</name>
+        <t>
+          This document assumes the reader's very basic familiarity with the following references. These are merely OPTIONAL
+          in order to understand the concepts proposed in this document, but will provide plenty of helpful context.
+        </t>
+        <ul spacing="compact">
+          <li>Neighbor Discovery Protocol for IP Version 6 <xref target="RFC4861"/>.</li>
+          <li>IPv6 Neighbor Discovery (ND) Trust Models and Threats <xref target="RFC3756"/>.</li>
+          <li>Password Authentication with Insecure Communication <xref target="LAMPORT"/>.</li>
+          <li>A Survey of Ethernet LAN Security <xref target="ETHSEC"/>.</li>
+        </ul>
+      </section>
     </section>
 
     <section anchor="terms">
@@ -97,13 +111,7 @@
         <dt>ND (sometimes NDP)</dt>
         <dd>Neighbor Discovery (Protocol) <xref target="RFC4861"/>.</dd>
 
-        <dt>SEND</dt>
-        <dd>SEcure Neighbor Discovery <xref target="RFC3971"/>.</dd>
-
-        <dt>CGA</dt>
-        <dd>Cryptographically Generated Address <xref target="RFC3972"/>.</dd>
-
-        <dt>NDAR (sometimes AR)</dt>
+        <dt>NDAR</dt>
         <dd>The Neighbor Discovery Address Resolution process; see Section 7.2 of <xref target="RFC4861"/>.</dd>
 
         <dt>NC</dt>
@@ -129,12 +137,6 @@
 
         <dt>TLLAO</dt>
         <dd>Target Link-Layer Address Option. An ND option indicating the LLID of the NDAR target <xref target="RFC4861"/>.</dd>
-
-        <dt>DAD</dt>
-        <dd>Duplicate Address Detection (Section 5.4 of <xref target="RFC4862"/>).</dd>
-
-        <dt>SLAAC</dt>
-        <dd>Stateless Address Autoconfiguration <xref target="RFC4862"/>.</dd>
 
         <dt>NDSO</dt>
         <dd>Neighbor Discovery Session Option. An ND option either initiating or continuing an ND Session.</dd>
@@ -212,7 +214,7 @@
             <li>
               Identification. A session established with a legitimate SP is guaranteed to be continually legitimate through its
               duration, potentially ad infinitum if it is regularly refreshed. A malicious node therefore cannot spoof LLIDs or
-              inject itself into any AR exchanges overlayed by ND Sessions.
+              inject itself into any NDAR exchanges overlayed by ND Sessions.
             </li>
             <li>
               Simplicity. Avoiding reliance on public-key cryptography or Public-Key Infrastructure is highly preferred, as extra
@@ -242,16 +244,18 @@
             <li>
               Temporality. Expirations are imposed on sessions after considerably long (and adjustable) durations. Any malicious node
               taking advantage of expiration windows could successfully snipe link sessions and therefore lock out legitimate hosts
-              from communicating using the resolved Target Address. <xref target="security"/> explores this in more detail.
+              from communicating using the resolved Target Address. <xref target="security-lockout"/> explores this in more detail.
             </li>
             <li>
               Disconnectedness. Any participating session node who either (1) is maliciously locked out of the session by letting it expire,
               or (2) fails to persist session details properly, will suffer from a long-term state of disconnectedness from the previous
               SP. This is because the other end of the session cannot permit flexibility in establishing new sessions for the same NC entry.
+              See <xref target="security-lockout"/> for more details.
             </li>
             <li>
               Disorganization. A tangled web of end-to-end sessions, when implemented poorly, can seem arbitrary and lead to many
               sessions being juggled by an interface at one time, depending on the number of sessions a given node has with its neighbors.
+              See <xref target="security-management"/> for a further exploration of this issue.
             </li>
           </ul>
         </section>
@@ -284,12 +288,13 @@
 R  :=  A pseudo-random secret from an entropy source.
 e  :=  Expiration value of the session.
 i  :=  The current or tentative SessionID.
-L  :=  The current Link-Layer ID of the sending interface.
+L  :=  The current or tentative LLID of the sender.
+A  :=  The current or tentative IP address of the sender.
 c  :=  Max iterations -> [some integer; 0 < c < 2^16].
  `----> A chain seeded by R using c total iterations,
          that expires after 'e' minutes.
 
-p  :=  c || e || i || L
+p  :=  c || e || i || L || A
   (where '||' represents a binary concatenation)
 
 H_n+1 = SHA256(H_n || p)
@@ -412,6 +417,35 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
       </section>
 
+      <section anchor="summary-state">
+        <name>Preserving State</name>
+        <t>
+        </t>
+        <figure anchor="ratchet-chains">
+          <name>Visualized Ratcheting Hash Chains</name>
+          <artwork type="ascii-art" name="exampleRatcheting.txt">
+            <![CDATA[
++~~~~~~~~~~~~~~~~~+                                 +~~~~~~~~~~~~~~~~~+
+|    85 86 87  |= | [Ratchets turn clockwise only,  |    85 86 87  |= |
+|      \ | /  ,|  |  decrementing the Counter value |      \ | /  ,|  |
+|       \|/  /_|  |  of a HC with each 'tick'.]     |       \|/  /_|  |
+| 84 ---[J]--- 88 |                                 | 84 ---[U]--- 88 |
+|       /|\       | <-- {SI.Session#85876.myHC}     |       /|\       |
+|      / | \      |                `--> .peerHC --> |      / | \      |
+|    .. 90 89     |     {SP.Session#85876.myHC} --> |    .. 90 89     |
++~~~~~~~~~~~~~~~~~+                `--> .peerHC     +~~~~~~~~~~~~~~~~~+
+  [HC_SI]      ^----------------------------'         [HC_SP]
+
+* Each time a new NDSO is sent, the sending HC's ratchet MUST 'tick'
+   once to decrement the counter value.
+* When the ratchet reaches 0, or the HC is finished, a new one is made.
+* These ratchets are NOT REQUIRED to be synchronized with each other.
+   This is why each session node stores information about both.
+            ]]>
+          </artwork>
+        </figure>
+      </section>
+
       <section anchor="summary-interfaces">
         <name>Interface Configurations</name>
         <t>
@@ -431,9 +465,8 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             acknowledgements or to initiate sessions.
           </li>
           <li>
-            <tt>Strict</tt> mode. Senders of NDAR packets MUST always attempt session initiation when a session with the
-            peer is not already ongoing. Neighbors without a current session MUST be ignored if they do not respond with
-            NDSOs in their NDAR packets and/or acknowledge new sessions.
+            <tt>Strict</tt> mode. Senders of ND packets MUST always attempt session initiation when a session with the
+            peer is not already ongoing. Receivers MUST ignore ND packets if they do not contains NDSOs.
           </li>
         </ul>
         <t>
@@ -531,6 +564,9 @@ SAME CHAIN ACCORDING TO RECEIVERS:
                 If the session IS persistent: this field MUST be measured in hours.
               </li>
             </ul>
+            <t>
+              This value MUST be greater than or equal to 3.
+            </t>
           </dd>
           <dt>SessionID</dt>
           <dd>
@@ -539,7 +575,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dt>CounterMax</dt>
           <dd>
             Big-endian. The amount of times a secret Root Hash H<sub>0</sub> is iterated to produce the Final Hash H<sub>CounterMax</sub>. This
-            value SHOULD NOT be set higher than 10,000.
+            value SHOULD NOT be a value greater than 10,000, and MUST be greater than or equal to 100.
           </dd>
           <dt>Counter</dt>
           <dd>
@@ -547,8 +583,15 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             the FinalHash. If this value is set to 0, then the CurrentHash MUST be set to the chain's Root Hash and NewHash MUST be the new
             FinalHash value of the next chain with the same CounterMax iterations length.
           </dd>
-          <dt>FinalHash</dt><dd>The Final Hash from the set computed with Counter SHA-256 iterations.</dd>
-          <dt>CurrentHash</dt><dd>The input hash which, when iterated by SHA-256 Counter times, will produce the FinalHash.</dd>
+          <dt>FinalHash</dt>
+          <dd>
+            The full SHA-256 Final Hash from the set computed with Counter SHA-256 iterations. This value MUST NOT change unless the previous
+            NDSO provided a NewHash value.
+          </dd>
+          <dt>CurrentHash</dt>
+          <dd>
+            The full SHA-256 input hash which, when iterated Counter times, MUST produce the FinalHash value.
+          </dd>
           <dt>NewHash</dt>
           <dd>
             When CurrentHash equals the Root Hash of the current chain and Counter is equal to CounterMax, this value MUST be a new
@@ -574,16 +617,63 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       <!-- TODO -->
       <name>An Example Session</name>
       <t>
-        It is useful to first establish some context before presenting the process of a legitimate session.
-        Host A (H_a) is the soliciting host initiating the session, while Host B (H_b) accepts it and engages.
+        It is useful to first create some context before presenting the process of a legitimate session.
+        Node A (N<sub>a</sub>) is the soliciting node initiating the session while Node B (N<sub>b</sub>) is the receiving and accepting node.
+        N<sub>a</sub> is used as the point of reference when discussing the session's details, so it is termed the Session Interface (SI).
+        Since N<sub>b</sub> is relatively "across" the session from N<sub>a</sub>, it is termed the Session Peer (SP).
       </t>
-      <blockquote>
-        H_a has address '2001:db8::12bc:8090/64' with LLID '3B-55-0C-00-12-33'<br />
-        H_b has address '2001:db8::aaaa:bbbb/64' with LLID 'BC-71-A3-89-CC-60'
-      </blockquote>
+      <ul spacing="compact">
+        <li>N<sub>a</sub> has IP address <tt>2001:db8::12bc:8090/64</tt> with an interface LLID of <tt>3B-55-0C-00-12-33</tt>.</li>
+        <li>N<sub>b</sub> has IP address <tt>2001:db8::aaaa:bbbb/64</tt> with an interface LLID of <tt>BC-71-A3-89-CC-60</tt>.</li>
+        <li>Both nodes are operating in the Strict ICM.</li>
+      </ul>
+      <t>
+        N<sub>a</sub> would like to perform NDAR for N<sub>b</sub>'s IP address in order to forward link-layer frames to the correct address.
+        Since both interfaces are using a Strict configuration, no ND packets will be accepted without valid attached NDSOs.
+      </t>
       <ol>
-        <li>H_a sends a solicited-multicast NS to ff02::1:ffaa:bbbb, including a 'New' (initiated) ND Session option.</li>
+        <li>
+          <t>
+            N<sub>a</sub> sends a solicited-multicast NS to <tt>ff02::1:ffaa:bbbb</tt>, including a 'New' (initiate) NDSO.
+          </t>
+        </li>
       </ol>
+
+      <section anchor="example-malice">
+        <name>Attempting to Break the Session</name>
+        <t>
+        </t>
+      </section>
+    </section>
+
+    <section anchor="transitions">
+      <name>Transition Considerations</name>
+      <t>
+        Transitioning to network-wide use of ND Sessions is fairly simple no matter the deployment. It is a matter of properly
+        adjusting the configuration of each interface on-link to accommodate the capabilities of their neighbors.
+      </t>
+      <t>
+        The majority of nodes SHOULD start in the Ignore ICM when they are not ready to parse any NDSOs. Nodes SHOULD NOT ever
+        be in the Strict ICM while being a member of a transitioning network, because encountering a node without support for
+        NDSOs will make NDAR processes fail consistently. As more nodes become capable of managing ND Sessions, the Gregarious
+        mode SHOULD be gradually introduced to have "pockets" of successful sessions. Once those are proven to function, pockets
+        of devices with Strict ICMs configured could work without issue.
+      </t>
+      <t>
+        Ultimately, a successful transition to using enforced ND Sessions on a local network is accomplished by gradually sweeping
+        all nodes from the Ignore ICM through to the Strict ICM, as the deployment situation and network infrastructure permits.
+      </t>
+    </section>
+
+    <section anchor="privacy">
+      <name>Privacy Considerations</name>
+      <t>
+        ND Sessions do not pose a risk to user privacy because all session details are attached as options on packets which
+        are not intended to leave (or leak from the local network). Acquisition or eavesdropping on NDSOs does not afford an
+        attacker or tracker any extra information about a target which would be valuable. This is especially true when considering
+        the end-to-end nature of ND Sessions: NDSO attachments are always unique depending on the participants of the session
+        being observed.
+      </t>
     </section>
     
     <section anchor="security">
@@ -594,10 +684,18 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         adequate exploration in the rest of this document.
       </t>
 
-      <section anchor="security-binding">
-        <name>Temporal Proof of Ownership</name>
+      <section anchor="security-lockout">
+        <name>Address Bindings &amp; Lockout</name>
         <t>
           <!-- TODO: ND Sessions provide short-term proof of ownership because malicious senders don't know root hash values. -->
+        </t>
+      </section>
+
+      <section anchor="security-management">
+        <name>Poor Session Management &amp; Correlation</name>
+        <t>
+          <!-- TODO: ND Sessions need to be kept tightly related to their NC entries. The NC entry consists of an IP and LLID, BOTH OF WHICH are the components tied to a session.
+              So even without the NC entry, the session can still be enforced -->
         </t>
       </section>
 
@@ -611,6 +709,13 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <name>Bogus Session Option Replies</name>
           <t>
             <!-- DoS attack might send a bunch of crafted bogus NDSOs to keep setting the NC entry to STALE. -->
+          </t>
+        </section>
+
+        <section anchor="security-dos-exhaustion">
+          <name>Resource Exhaustion</name>
+          <t>
+            <!-- TODO: This is only an issue on low-power nodes which cannot handle many simultaneous hash chains. -->
           </t>
         </section>
       </section>
@@ -635,38 +740,48 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       <name>References</name>
       <references>
         <name>Normative References</name>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml"/>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4861.xml"/>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4861.xml"/> <!-- NDP -->
       </references>
       <references>
         <name>Informative References</name>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4291.xml"/>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4862.xml"/>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3971.xml"/>
-        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3972.xml"/>
-      </references>
-      <!-- <references>
-        <name>Informative References</name>
-        <reference anchor="exampleRefMin">
+        <reference anchor="LAMPORT" target="https://doi.org/10.1145/358790.358797">
           <front>
-            <title>Title [REPLACE]</title>
-            <author initials="Initials [REPLACE]" surname="Surname [REPLACE]">
-              <organization/>
+            <title>Password Authentication with Insecure Communication</title>
+            <author initials="L." surname="Lamport" fullname="Leslie Lamport">
+              <organization>SRI International</organization>
             </author>
-            <date year="2006"/>
+            <date year="1981" month="November"/>
+            <abstract>
+              <t>
+                Original research resulting in the use of one-way cryptographic hashes as one-time passwords.
+              </t>
+            </abstract>
           </front>
+          <seriesInfo name="DOI" value="10.1145/358790.358797"/>
         </reference>
-        <reference anchor="exampleRefOrg" target="http://www.example.com/">
+        <reference anchor="ETHSEC" target="https://doi.org/10.1109/SURV.2012.121112.00190">
           <front>
-            <title>Title [REPLACE]</title>
-            <author>
-              <organization>Organization [REPLACE]</organization>
+            <title>A Survey of Ethernet LAN Security</title>
+            <author fullname="Timo Kiravuo" initials="T." surname="Kiravuo">
+              <organization>Department of Communications and Networking, Aalto University, Finland</organization>
             </author>
-            <date year="1984"/>
+            <author fullname="Mikko Sarela" initials="M." surname="Sarela">
+              <organization>Department of Communications and Networking, Aalto University, Finland</organization>
+            </author>
+            <author fullname="Jukka Manner" initials="J." surname="Manner">
+              <organization>Department of Communications and Networking, Aalto University, Finland</organization>
+            </author>
+            <date year="2013" month="January"/>
           </front>
-        </reference>       
-      </references> -->
+          <seriesInfo name="DOI" value="10.1109/SURV.2012.121112.00190"/>
+        </reference>
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4291.xml"/> <!-- IPv6 Addr Architecture -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3756.xml"/> <!-- IPv6 ND Trust Models, Threats -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3971.xml"/> <!-- SEND -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3972.xml"/> <!-- CGA -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml"/> <!-- BCP14 keywords -->
+        <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/> <!-- BCP14 ambiguities -->
+      </references>
     </references>
 
     <section anchor="appendix-chain">
@@ -674,7 +789,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       <t>
         This section contains a more detailed and specific example of RHCR, and how its values can be used as idempotent,
         one-time passwords to prove knowledge of a single root password (the Root Hash).
-        The final calculated SHA-256 values are just bogus results; they are only written out to demonstrate the purpose
+        The final calculated SHA-256 values are bogus values; they are only written out to demonstrate the purpose
         of the HC in ZKPP and RHCR.
       </t>
       <figure>
@@ -688,6 +803,7 @@ GENERATOR'S PERSPECTIVE:
   e   := Expiration value of the session.
   i   := The current or tentative SessionID.
   L   := The current or tentative LLID of the sender.
+  A   := The current or tentative IP address of the sender.
   p   := A fixed Salt value using C and other constants.
 
 H_0   := SHA256(R || p)    <--- Root Hash
@@ -696,14 +812,19 @@ H_n+1 := SHA256(H_n || p)  <--- Intermediate Hashes
  If...
   R  =  "gbvouewihng398p44fijmv3o"
   c  =  5
-  p  =  c || e || i || L
-         `--> 5 || 23 || 734453247 || 11-22-33-44-55-66
+  p  =  c || e || i || L || A
+          = 5 || 23
+              || 734453247 
+              || 11-22-33-44-55-66
+              || fe80::1234:5678
 
  Then...
   H_0 = SHA256(
          "gbvouewihng398p44fijmv3o" ||
          {0x05, 0x17, 0x2B, 0xC6, 0xDD, 0xFF, 0x11, 0x22,
-            0x33, 0x44, 0x55, 0x66}
+            0x33, 0x44, 0x55, 0x66, 0xFE, 0x80, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x12, 0x34, 0x56, 0x78}
         )
       = c36b2c9a...bc901395
 
@@ -717,11 +838,12 @@ VERIFIER'S PERSPECTIVE:
  | "What I know is..."
     c    :=  5
     e    :=  23
-    L    :=  11-22-33-44-55-66
+    L_SP :=  11-22-33-44-55-66
+    A_SP :=  fe80::1234:5678
     H_c  :=  H_5  =  7d730fee...4aac9926
 
  | "I can also construct the Salt..."
-    p    :=  {0x05, 0x17, ..., 0x66}
+    p    :=  {0x05, 0x17, ..., 0x56, 0x78}
 
  | "To prove its identity, the Session Peer should send H_4.
  |   I wouldn't know this value prior to getting it, because
