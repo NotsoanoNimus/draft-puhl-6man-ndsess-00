@@ -145,8 +145,8 @@
         <dd>Interface Configuration Mode. One of three different ND Session operating modes specifying the behavior of an
           interface when sending or receiving ND packets.</dd>
 
-        <dt>SU</dt>
-        <dd>Session User. Either one of the two participants engaged in an ND Session. When pluralized, this describes both
+        <dt>SN</dt>
+        <dd>Session Node. Either one of the two participants engaged in an ND Session. When pluralized, this describes both
           participanting nodes.</dd>
 
         <dt>SI</dt>
@@ -200,29 +200,30 @@
           cryptographic hashing. They trade simplicity, ease of use, and
           first-come-first-serve trust for a lack of complex public-key cryptography, infrastructure, signatures, et al. They
           are used to bind two exchanged, perishable secrets to a specific NDAR exchange between two nodes on the same network.
-          The revelation of a secret causes its immediate expiration. ND Sessions DO NOT guarantee the ownership of an IP address:
-          they only guarantee the legitimacy of NDAR and NUD packets exchanged within an established, ongoing session.
+          The revelation of an intermediate secret causes its immediate expiration. ND Sessions DO NOT guarantee the ownership
+          of an IP address: they only guarantee the legitimacy of NDAR and NUD packets exchanged within an established, ongoing
+          session.
         </t>
         <t>
           Numerous suggestions have been made in the past to bind LLIDs to their interface IP addresses without requiring
-          public-key cryptography (a great example being the SAVI Framework's use of 'binding anchors' <xref target="RFC7039"/>).
+          public-key cryptography (e.g., the SAVI Framework's use of 'binding anchors' <xref target="RFC7039"/>).
           However, many suggestions still find themselves lacking adoption or vulnerable to Identity Assumption attacks on
           unsecure link layers. These attacks occur when a node goes off-link (either removed from the network maliciously,
           or by moving away) and a malicious node becomes free to assume its LLID, thus circumventing such address bindings.
           When this happens, malicious nodes are liberated to falsify and redirect NDP traffic in on-path attacks.
         </t>
         <t>
-          To mitigate this, two nodes can establish private, unicast-only hash chains which can be used to prove each other's
-          identities over a long-term and ongoing session. Hash chains are refreshed when required and each of the two participating
-          nodes maintain their own perspectives of the session. Employing this cryptographic primitive empowers a session node to
-          identify when the SP is being impersonated and to act accordingly. Adjustable session expiration windows
-          also allow peer link-layer addresses to be recycled to new nodes in busy networks where neighbors may be more ephemeral.
+          To mitigate this, two nodes can establish private, unicast-only authentication chains which can be used to prove each other's
+          identities over a long-term and ongoing session. These chains are refreshed when required and each of the two participating
+          nodes maintain their own perspectives of the session. Employing a simple cryptographic primitive empowers a session node to
+          identify when its peer is being impersonated and to act accordingly. Adjustable session expiration windows and invalidation
+          timers also allow peer link-layer addresses to be recycled to new nodes in busy networks where neighbors may be more ephemeral.
         </t>
 
         <section anchor="summary-overview-goals">
           <name>Goals &amp; Tradeoffs</name>
           <t>
-            ND Sessions seek to accomplish a few different goals:
+            ND Sessions aim to satisfy a few core goals for Neighbor Discovery:
           </t>
           <ul>
             <li>
@@ -232,100 +233,131 @@
             </li>
             <li>
               Simplicity. Avoiding reliance on public-key cryptography or Public-Key Infrastructure is highly preferred, as extra
-              complexities demanded by these tools have in the past resulted in slow solution deployments.
+              complexities demanded by these tools have in the past resulted in slow or nonexistent adoptions.
             </li>
             <li>
               Performance. A fixed reliance on SHA-256 and very simple concatenate-and-iterate movements lend themselves to
-              drastically improved session performance on participating embedded systems. SHA-256 is perhaps one of the most
+              drastically improved session performance on participating low-resource systems. SHA-256 is perhaps one of the most
               ubiquitous hashing algorithms, while also being significantly collision-resistant
               (Section 4 of <xref target="SP.800-107.R1"/>).
             </li>
             <li>
               Privacy. Sessions are end-to-end and do not rely on a centralized infrastructure to communicate registration
               information or other parameters. The use of RHCR ensures the privacy and protection of root session passwords
-              at all times, while also rendering packet replay attackings infeasible.
+              at all times, while also rendering packet replay attacks infeasible.
             </li>
             <li>
               Flexibility. Nodes can opt into or out of sessions at any time by disregarding packet options, depending on
-              their interface configuration and implementation.
+              their interface configurations and implementations.
             </li>
           </ul>
-          <t>
-            These goals must necessarily be accomplished by trading off some other features granted by more complex solutions.
-            Drawbacks of using NDSOs, as opposed to more mature specifications, include:
+          <!-- <t>
+            These goals are necessarily accomplished by trading off some other features granted by more complex solutions.
+            Possible drawbacks of using NDSOs, as opposed to more mature specifications, include:
           </t>
           <ul>
             <li>
               Temporality. Expirations are imposed on sessions after considerably long (and adjustable) durations. Any malicious node
               taking advantage of expiration windows could successfully snipe link sessions and therefore lock out legitimate hosts
-              from communicating using the resolved Target Address. <xref target="security-lockout"/> explores this in more detail.
+              from communicating using the resolved Target Address.
             </li>
             <li>
-              Disconnectedness. Any participating session node who either (1) is maliciously locked out of the session by letting it expire,
-              or (2) fails to persist session details properly, will suffer from a long-term state of disconnectedness from the previous
-              SP. This is because the other end of the session cannot permit flexibility in establishing new sessions for the same NC entry.
-              See <xref target="security-lockout"/> for more details.
-            </li>
-            <li>
-              Disorganization. A tangled web of end-to-end sessions, when implemented poorly, can seem arbitrary and lead to many
-              sessions being juggled by an interface at one time, depending on the number of sessions a given node has with its neighbors.
-              See <xref target="security-management"/> for a further exploration of this issue.
+              Disconnectedness. Any participating session node who either (1) is maliciously locked out of the session through invalidation,
+              or (2) fails to persist session details properly, might suffer from a temporary state of disconnectedness from the peer node.
+              This is because the other end of the session cannot permit flexibility in establishing new sessions for the same NC entry,
+              if one is active and responsive.
             </li>
           </ul>
-        </section>
-
-        <section anchor="summary-overview-protection">
-          <name>Impersonation Protection &amp; Authentication Model</name>
           <t>
-          </t>
-          <t>
-            Information about the SP and SI HCs involved in a session can be visualized as two mechanical ratchets. Each 
-            These 'ratchets' are NOT REQUIRED to be synchronized, but often are.
-          </t>
-          <figure anchor="ratchet-chains">
-            <name>Visualized Ratcheting Hash Chains</name>
-            <artwork type="ascii-art" name="exampleRatcheting.txt">
-              <![CDATA[
-+~~~~~~~~~~~~~~~~~+                                 +~~~~~~~~~~~~~~~~~+
-|   85  86  87 |= | [Ratchets turn clockwise only,  |   85  86  87 |= |
-|     \  |  / ,|  |  decrementing the Counter value |     \  |  / ,|  |
-|      \ | / /_|  |  of a HC with each 'tick'.]     |      \ | / /_|  |
-| 84 ---[J]--- 88 |                                 | 84 ---[U]--- 88 |
-|      / | \      | <-- {SI.Session#85876.myHC}     |      / | \      |
-|     /  |  \     |                `--> .peerHC --> |     /  |  \     |
-|   ..   90  89   |     {SP.Session#85876.myHC} --> |   ..   90  89   |
-+~~~~~~~~~~~~~~~~~+                `--> .peerHC     +~~~~~~~~~~~~~~~~~+
-  [HC_SI]      ^----------------------------'         [HC_SP]
-
-* Each time a new NDSO is sent, the sending HC's ratchet MUST 'tick'
-   once to decrement the counter value.
-* When the ratchet reaches 0, or the HC is finished, a new one is made.
-* These ratchets are NOT REQUIRED to be synchronized with each other.
-   This is why each session node stores information about both.
-              ]]>
-            </artwork>
-          </figure>
+            See <xref target="security-lockout"/> for more details about both of these potential drawbacks.
+          </t> -->
         </section>
       </section>
 
-      <section anchor="summary-chains">
-        <name>Reverse Hash Chains</name>
+      <section anchor="summary-overview-protection">
+        <name>Impersonation Protection &amp; Authentication Model</name>
         <t>
-          ND Sessions use two-way RHCR to prove the ongoing exchange of all NUD or NDAR packets are still transacted between
-          the two original session nodes. These reverse HCs were first theoretically applied to IPv6 addresses in Section 4.2 of
-          <xref target="NIKANDER"/>. Chains are small and lightweight, but difficult to break thanks to the one-way nature of
-          hashing functions.
+          Sessions authenticate by asserting repeated knowledge of one-time tokens that are based on knowledge of a revolving root password.
+          This password is unique for each of the two Session Nodes (SNs) in an ND Session. The receiver of a peer's token will always have
+          sufficient knowledge of how to prove its validity, and doing so requires using fixed NDP parameters which the Session Peer (SP)
+          cannot easily change -- such as the LLID and IP address currently used by the SP in the active session.
         </t>
         <t>
-          A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
-          value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive to after some applied 'Counter' value
-          of iterations. The 'final hash' H<sub>counter</sub> is a public and essential ZKPP value for the verifying session peer to store
-          persistently.
+          The very first 'root password' used to seed a new session is formed into an initial hash, called a Root Hash (RH). This RH is then
+          the basis of ZKPP authentication with the SP until the SI swaps it for another. The RH is used to form a Hash Chain (HC) of variable
+          length by repeatedly iterating and salting resulting hash values up to a selected count. The last hash in this iterative process is
+          called the Final Hash (FH). The maximum 'Count' value, which indicates the length of the HC for the SI, is sent with the FH to the
+          SP, who can then use those two items hence to authenticate single-use tokens consisting of intermediate hash values in the SI's HC.
         </t>
-        <figure anchor="session-chaining">
-          <name>Hash Chaining in ND Sessions</name>
-          <artwork type="ascii-art" name="hashChains.txt">
+        <t>
+          The purpose of the single-use hashes is to safely allow up to any arbitrary amount of derived one-time tokens from the RH,
+          until the SP decides to rotate to the next password; often at random, but not always. This one-time-use, password-protecting mechanism
+          prevents potential adversaries from inserting themselves in the middle of any ongoing session. Single use of the tokens also
+          requires adversaries to expend unrealistic effort to either (1) time the acquisition of the root password perfectly or (2) intercept
+          single-use, unicasted tokens repeatedly. To rotate to the next RH, SIs will VERY judiciously reveal their current RH to the SP and
+          simultaneously offer them the FH of a newly-formed HC, sharing no correlation with the current finalizing chain.
+        </t>
+        <t>
+          From the perspectives of each SN, there is an HC for itself (the <tt>HC<sub>SI</sub></tt>) and its SP (the <tt>HC<sub>SP</sub></tt>).
+          Both of these chains are instrumental in assuring a session adequately protects and enforces the validity of exchanged NDP packets.
+          The former chain is used to offer the latest single-use hash to the peer according to a decrementing counter, and the latter is used
+          to verify the authenticity of received NDSOs from the peer.
+        </t>
+        <t>
+          Information about the SP and SI HCs can be visualized as two mechanical ratchets, a familiar concept in cryptography and secure messaging <xref target="RATCHET"/>.
+          'Ticking' a ratchet means moving to the next value, or one of the next values, of the tool; doing so cannot be reversed for any
+          reason, to follow the ratchet analogy. When the SP ticks its ratchet, it indicates doing so by providing its new intermediate hash
+          at the given ratchet value (i.e., count), thus invalidating any count greater than it which has already 'ticked by' in the spinning
+          ratchet gear.
+        </t>
+        <t>
+          These ratchets are NOT REQUIRED to be synchronized, but often are. So when an SI receives a new 'tick' from an SP, it can
+          often match the counter value depending on the synchronization of the <tt>HC<sub>SI</sub></tt> and the <tt>HC<sub>SP</sub></tt> chains.
+          Likewise, when <tt>HC<sub>SP</sub></tt> is finalized and moves to a new chain, the SI will finalize and renew <tt>HC<sub>SI</sub></tt>.
+        </t>
+        <figure anchor="ratchet-chains">
+          <name>Visualized Ratcheting Hash Chains</name>
+          <artwork type="ascii-art" name="exampleRatcheting.txt">
             <![CDATA[
++~~~~~~~~~~~~~~~~~+                                +~~~~~~~~~~~~~~~~~+
+|   85  86  87 |= | Ratchets turn clockwise only,  |   85  86  87 |= |
+|     \  |  / ,|  | decrementing the Counter value |     \  |  / ,|  |
+|      \ | / /_|  | of a HC with each 'tick'.      |      \ | / /_|  |
+| 84 ---(*)--- 88 |                                | 84 ---(*)--- 88 |
+|      / | \      | <-- {SI.Session#85876.myHC}    |      / | \      |
+|     /  |  \     |               `--> .peerHC --> |     /  |  \     |
+|   ..   90  89   |    {SP.Session#85876.myHC} --> |   ..   90  89   |
++~~~~~~~~~~~~~~~~~+               `--> .peerHC     +~~~~~~~~~~~~~~~~~+
+  [HC_SI]      ^---------------------------'         [HC_SP]
+
+* Each time a new NDSO is sent, the sending HC's ratchet MUST 'tick'
+   once to decrement the counter and provide a new single-use value.
+* When a ratchet reaches 0, or the HC is finished, a new one is made.
+* These ratchets are NOT REQUIRED to be synchronized with each other.
+   This is why each Session Node stores information about both.
+            ]]>
+          </artwork>
+        </figure>
+
+        <section anchor="summary-chains">
+          <!-- TODO: REVISE based on the already-shown exploration of the auth model above. -->
+          <name>Reverse Hash Chain Revealing</name>
+          <t>
+            ND Sessions use two-way RHCR to prove the ongoing exchange of all NUD or NDAR packets are still transacted between
+            the two original session nodes. These reverse HCs were first theoretically applied to IPv6 addresses in Section 4.2 of
+            <xref target="NIKANDER"/>. Chains are small and lightweight, but difficult to break thanks to the one-way nature of
+            hashing functions.
+          </t>
+          <t>
+            A 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
+            value which all ancestor hashes -- or 'links', to follow the chain analogy -- will arrive at after some applied 'Counter' value
+            of iterations. The 'final hash' H<sub>counter</sub> is a public and essential ZKPP value for the verifying session peer to store
+            persistently.
+          </t>
+          <figure anchor="session-chaining">
+            <name>Hash Chaining in ND Sessions</name>
+            <artwork type="ascii-art" name="hashChains.txt">
+              <![CDATA[
 R  :=  A pseudo-random secret from an entropy source.
 e  :=  Expiration value of the session.
 i  :=  The current or tentative SessionID.
@@ -355,44 +387,119 @@ SAME CHAIN ACCORDING TO RECEIVERS:
   ... ??? =)(==)(==)(==)(==)(==)
              |   |   |   |   |
   H_:        x  x+1 x+2 x+3  c 
-            ]]>
-          </artwork>
-        </figure>
+              ]]>
+            </artwork>
+          </figure>
+          <t>
+            The node creating the HC will be aware of its initial parameters. The first computed hash is known as the 'Root Hash' (RH) and
+            is essential knowledge for deriving the rest of the chain hashes iteratively. The RH then acts as a sort of 'password' to
+            the rest of the chain, so it MUST be kept secret until the session's chain is finished and subsequently rotated to another.
+          </t>
+          <t>
+            SIs can prove communication with an honest and genuine SP by asking for an intermediate hash value
+            the SI does not yet know. And once the chain is finished (see below), the RH MUST be revealed in the next NDSO in order to
+            set a NewHash value. The NewHash value is equivalent to the FinalHash value of a new HC that is CounterMax iterations
+            in length.
+          </t>
+          <t>
+            More explicitly stated for <xref target="session-chaining"/>,
+            holders of the RH are always able to determine any value of <tt>H<sub>t</sub></tt> where <tt>{0 &lt;= t &lt;= c}</tt>.
+            Receivers who know some intermediate hash <tt>H<sub>x</sub></tt>, where <tt>{0 &lt;= x &lt;= c}</tt>, are only able to derive
+            <tt>H<sub>y</sub></tt> where <tt>{x &lt;= y &lt;= c}</tt>. Therefore, any hash less than <tt>H<sub>x</sub></tt> acts as a one-time
+            password to assert knowledge of RH <tt>H<sub>0</sub></tt>.
+          </t>
+          <t>
+            A Hash Chain MUST be considered 'finished' (or 'finalized') when any of the following are true:
+          </t>
+          <ul>
+            <li>The current session Counter is at 1, meaning 0 (the RH) is next in line.</li>
+            <li>The LLID of the sending interface has changed, and the change is tentative for the NDAR exchange with the SP.</li>
+            <li>The sender decides the chain should be refreshed. Implementations SHOULD do this at random when the Counter value
+              reaches 10% or less of the CounterMax value of the current session.</li>
+            <li>The session itself is about to expire or needs to be forcibly refreshed otherwise.</li>
+          </ul>
+          <t>
+            See <xref target="appendix-chain"/> for more specific details about RHCR and authentication.
+          </t>
+        </section>
+      </section>
+
+      <section anchor="summary-state">
+        <name>Preserving State</name>
         <t>
-          The node creating the HC will be aware of its initial parameters. The first computed hash is known as the 'Root Hash' and
-          is essential knowledge for deriving the rest of the chain links iteratively. The Root Hash then acts as a sort of 'password' to
-          the rest of the chain, so it MUST be kept secret until the session's chain is nearly exhausted.
+          It is crucial to preserve the state of ND Sessions at all times and to keep the information as recent as possible. While
+          the responsiveness of a node in caching or updating received session details is not of critical importance, it is essential
+          to prevent any possibility of replay attacks against SNs.
+          Thus, SNs MUST actively preserve the state of all ND Sessions in which they are engaged. Because session durations
+          may extend up to days at a time without any activity (if not invalidated), SNs MUST use a persistent, non-volatile storage
+          to preserve session details.
         </t>
         <t>
-          Nodes can prove communication with an honest and genuine SP during a session by asking for an intermediate hash value
-          they do not know yet. And once the chain is finished (see below), the RH MUST be revealed in the next NDSO in order to
-          set a NewHash value. The NewHash value is equivalent to the FinalHash value of a new HC that is CounterMax iterations
-          in length.
+          If a node is powered down or otherwise loses data in its non-volatile storage, it MUST NOT lose
+          session information. Depending on the activity of the link and the volume of sessions, these details might
+          update at a rapid pace; therefore, implementations MAY choose to keep in-flight session details in a non-volatile
+          memory pool and regularly shadow it 
         </t>
+
+        <section anchor="summary-state-pruning">
+          <name>Session State Pruning</name>
+          <t>
+            In order to weaken attack vectors seeking to exhaust storage resources or the ability to track current sessions altogether,
+            implementations MUST consider how to manage a flood of incoming sessions. If the resources on a SN are becoming more
+            constrained and approaching their limit, the least active sessions MUST be pruned in order to preserve resources. While
+            this may ordinarily be a rare event, it is an important feature for embedded or low-power network devices having fewer resources
+            at their disposal. 'Pruning' means deleting session details which have expired or are aged, in order to make space for higher
+            priority or newer sessions.
+          </t>
+          <t>
+            The Session Reachability Confirmation feature of this specification from <xref target="summary-lifecycle-initiation"/> affords
+            protections against this problem because Expirations cannot be specified beyond 1 minute until at least one ND Reachability
+            Confirmation beyond the initial session is registered.
+          </t>
+          <t>
+            Implementations MAY use their own algorithms and heuristic analysis of current sessions to determine which of them are
+            'least active' and should be pruned. Sessions MUST NOT be pruned if there is no valid reason to do so, as clearing ND
+            Session details will defeat their protections entirely by allowing other malicious parties to 'override' current sessions
+            and temporarily lock out legitimate nodes from each other <xref target="security-lockout"/>.
+          </t>
+        </section>
+      </section>
+
+      <section anchor="summary-interfaces">
+        <name>Interface Configurations</name>
         <t>
-          More explicitly stated for <xref target="session-chaining"/>,
-          holders of the RH are always able to determine any value of <tt>H_t</tt> where <tt>{0 &lt;= t &lt;= c}</tt>.
-          Receivers who know some intermediate hash <tt>H_x</tt>, where <tt>{0 &lt; x &lt;= c}</tt>, are only able to derive
-          <tt>H_y</tt> where <tt>{x &lt;= y &lt;= c}</tt>.
-        </t>
-        <t>
-          A Hash Chain MUST be considered 'finished' when any of the following are true:
+          A set of three Interface Configuration Modes (ICMs) is defined in this section. Having a few operating modes to choose
+          from will help to foster adoption of NDSOs, especially in mixed networks.
+          Interfaces MUST operate in any one of three modes affecting ND Session behaviors, chosen for the interface by the
+          implementation's discretion or by manual configuration:
         </t>
         <ul>
-          <li>The current session Counter is at 1, meaning 0 (the RH) is next in line.</li>
-          <li>The LLID of the sending interface has changed, and the change is tentative for the NDAR exchange with the SP.</li>
-          <li>The sender decides the chain should be refreshed. Implementations SHOULD do this at random when the Counter value
-            reaches 10% or less of the CounterMax value of the current session.</li>
-          <li>The session itself is about to expire or needs to be forcibly refreshed otherwise.</li>
+          <li>
+            <tt>Ignore</tt> mode. SIs MUST NOT initiate new sessions. SPs MUST NOT acknowledge any NDSOs.
+          </li>
+          <li>
+            <tt>Gregarious</tt> mode. SIs MUST always attempt session initiation when a session with the
+            SP is not already ongoing. SNs MUST NOT require SPs to reciprocate with any acknowledgements or to initiate sessions.
+          </li>
+          <li>
+            <tt>Strict</tt> mode. SIs MUST always attempt session initiation when a session with the
+            SP is not already ongoing. Receivers MUST ignore ND packets if they do not contain NDSOs.
+          </li>
         </ul>
         <t>
-          See <xref target="appendix-chain"/> for more specific details about RHCR and authentication.
+          ND Session compatibility and features MAY be disabled on interfaces at any time and for any reason, but doing so
+          will likely disrupt of all current sessions in which that interface was a SN. This might create communication
+          problems across the network due to dropped sessions.
         </t>
       </section>
 
 <!--       
         IMPORTANT: SESSIONS ARE NOT USED OVER MULTICAST ND MESSAGES. BASED ON THE ICM OF THE RECEIVER, IT MAY OR MAY
         NOT ACCEPT MULTICAST INDICATIONS OF SLLAO OR TLLAO.
+
+        IMPORTANT: NODES RETRYING TO CONNECT TO THE SESSION >CANNOT< EVER USE THE ROOT HASH IN DOING SO. IF THE HC IS AT OR BELOW 10%
+        OF ITS COUNT, ONLY A FEW MORE INTERMEDIATES CAN BE TRIED, BUT NEVER THE ROOT HASH. NODES SHOULD GIVE UP ON THE SESSION AND TRY
+        THE 'N' BIT STRATEGY BEFORE EVER REVEALING A ROOT HASH IN RETRIES, BECAUSE THE RH MIGHT GET STOLEN.
 
         <t>
           In a two-way ND session, hosts are expected to exchange all required initial information for the corresponding node at the other
@@ -449,13 +556,28 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
       -->
 
-      <section anchor="summary-initiation">
-        <!-- Cover the process, and don't forget to discuss the 'N' and 'A' bits. Also, ICMP DU responses -->
-        <name>Session Initiation &amp; Maintenance</name>
+      <section anchor="summary-lifecycle">
+        <name>Session Lifecycles</name>
         <t>
         </t>
 
-        <section anchor="summary-initiation-src">
+        <section anchor="summary-lifecycle-initiation">
+          <name>Initiations &amp; Renewals</name>
+          <!-- Cover the process, and don't forget to discuss the 'N' and 'A' bits. Also, ICMP DU responses and SITs -->
+          <t>
+          </t>
+        </section>
+
+        <section anchor="summary-lifecycle-lifetimes">
+          <name>Intended Durations &amp; Expirations</name>
+              <!-- Hosts receiving a bad NDSO response must send back an ICMP Dest Unreach to the cached peer. It will
+                then wait 1 minute for continued forward progress (Reach Conf) before dropping the peer's NC entry
+                and ND Session entirely. -->
+          <t>
+          </t>
+        </section>
+
+        <section anchor="summary-lifecycle-src">
           <name>Session Reachability Confirmations</name>
           <t>
             <!-- A session must be confirmed at least once, meaning the peer's LLID has been validated as receiving and responding to
@@ -463,91 +585,23 @@ SAME CHAIN ACCORDING TO RECEIVERS:
               this transaction or the session will expire. -->
           </t>
         </section>
-      </section>
 
-      <section anchor="summary-lifetimes">
-        <name>Intended Lifetimes &amp; Expirations</name>
-            <!-- Hosts receiving a bad NDSO response must send back an ICMP Dest Unreach to the cached peer. It will
-              then wait 1 minute for continued forward progress (Reach Conf) before dropping the peer's NC entry
-              and ND Session entirely. -->
-        <t>
-        </t>
-      </section>
-
-      <section anchor="summary-state">
-        <name>Preserving State</name>
-        <t>
-          It is crucial to preserve the state of ND Sessions at all times and to keep the information as recent as possible. While
-          the responsiveness of a node in caching or updating received session details is not of critical importance, it is essential
-          to prevent any possibility of replay attacks against SUs.
-          Thus, SUs MUST actively preserve the state of all ND Sessions in which they are engaged. Because session durations
-          may extend up to days at a time without any activity, SUs MUST use a persistent, non-volatile storage to preserve
-          session details.
-        </t>
-        <t>
-          If a node is powered down or otherwise loses data in its non-volatile storage, it MUST NOT lose
-          session information. Depending on the activity of the link and the volume of sessions, these details might
-          be updating at a rapid pace; therefore, implementations MAY choose to keep in-flight session details in a non-volatile
-          memory pool and regularly shadow it 
-        </t>
-
-        <section anchor="summary-state-pruning">
-          <name>Session State Pruning</name>
+        <section anchor="summary-lifecycle-maintenance">
+          <name>Session Maintenance</name>
           <t>
-            In order to evade attack vectors seeking to exhaust storage resources or the ability to track current sessions altogether,
-            implementations MUST consider how to manage a flood of incoming sessions. If the resources on a SU are becoming more
-            constrained and approaching their limit, the least active sessions MUST be pruned in order to preserve resources. While
-            this may ordinarily be a rare event, it is an important feature for embedded or low-power network devices having fewer resources
-            at their disposal. 'Pruning' means deleting session details which have expired or are aged, in order to make space for higher
-            priority or newer sessions.
-          </t>
-          <t>
-            The Session Reachability Confirmation feature of this specification from <xref target="summary-initiation"/> affords
-            protections against this problem because Expirations cannot be specified beyond 1 minute until at least one ND Reachability
-            Confirmation beyond the initial session is registered.
-          </t>
-          <t>
-            Implementations MAY use their own algorithms and heuristic analysis of current sessions to determine which of them are
-            'least active' and should be pruned. Sessions MUST NOT be pruned if there is no valid reason to do so, as clearing ND
-            Session details will defeat their protections entirely by allowing other malicious parties to 'override' current sessions
-            and temporarily lock out legitimate nodes from each other <xref target="security-lockout"/>.
+            <!-- TODO: ND Sessions need to be kept tightly related to their NC entries. The NC entry consists of an IP and LLID, BOTH OF WHICH are the components tied to a session.
+                So even without the NC entry, the session can still be enforced -->
+            Care MUST be taken not to tightly couple ND Sessions to NC entries, because NC entries are ephemeral and constantly changing.
+            Instead, packets with NDSOs MUST always firstly use their IDs in lookups, then their LLID-to-IP bindings (as a pair). This means
+            implementations MUST handle receipt of NDSOs by 
           </t>
         </section>
-      </section>
-
-      <section anchor="summary-interfaces">
-        <name>Interface Configurations</name>
-        <t>
-          A set of three Interface Configuration Modes (ICMs) is defined in this section. Having a few operating modes to choose
-          from will help to foster adoption of the ND option, even in mixed networks.
-          Interfaces MUST operate in any one of three modes affecting ND Session behaviors, chosen for the interface by the
-          implementation's discretion or by manual configuration:
-        </t>
-        <ul>
-          <li>
-            <tt>Ignore</tt> mode. Senders of NDSOs MUST NOT initiate new sessions.
-            Receviers MUST NOT acknowledge any NDSOs.
-          </li>
-          <li>
-            <tt>Gregarious</tt> mode. Senders of NDAR packets MUST always attempt session initiation when a session with the
-            peer is not already ongoing. Receivers MUST NOT require the SP to reciprocate with any
-            acknowledgements or to initiate sessions.
-          </li>
-          <li>
-            <tt>Strict</tt> mode. Senders of ND packets MUST always attempt session initiation when a session with the
-            peer is not already ongoing. Receivers MUST ignore ND packets if they do not contains NDSOs.
-          </li>
-        </ul>
-        <t>
-          ND Session compatibility and features MAY be disabled on interfaces at any time and for any reason, but doing so
-          will cause the disruption of all current sessions in which that interface was a peer node. This might create communication
-          problems for other nodes 
-        </t>
       </section>
 
       <section anchor="summary-ndchanges">
         <name>Modifications to Neighbor Discovery</name>
         <!-- Surprise! No modifications. Just caching behavior based on interface configuration mode. -->
+        <!-- TODO! -->
         <t>
           This specification proposes no modifications to the core of Neighbor Discovery; it only adds a new option and inserts
           itself in key points within the ND process. More specifically, the NDAR exchange is targeted as a crucial area of session
@@ -573,7 +627,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
    0                   1                   2                   3
    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  |     Type      |    Length     |P|N|A| Reserved|   Expiration  |
+  |     Type      |    Length     |P|N|A| Version |   Expiration  |
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   |                            Reserved                           |
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -625,6 +679,12 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dd>
             Acknowledgement bit. Indicates the Session option is responding directly to a New Session (using the 'N' bit set to 1). The Target
             Link-Layer Address option MUST be included in the same NDP packet when this bit is set.
+          </dd>
+          <dt>Version</dt>
+          <dd>
+            A 5-bit version identifier. This could be used in future protocol versions to dynamically change the structure of the option.
+            This field is REQUIRED to be a value of '1', but future additions to the protocol MAY add additional version numbers based on
+            forthcoming features or other modifications. This is helpful if, e.g., SHA-256 were no longer a viable hashing algorithm.
           </dd>
           <dt>Reserved</dt>
           <dd>Space reserved for future use. This value MUST be initialized to 0 by senders and MUST be ignored by receivers.</dd>
@@ -775,7 +835,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <t>
           ND Sessions use automatic "Trust On First Use" <xref target="TOFU"/> authentication, necessarily granting trust to the first
           legitimate respondent in an initiated (or received) session. Once the session has started and the first Session Reachability
-          Confirmation is received, the session can be extended indefinitely as long as both SUs remain online and responsive to one
+          Confirmation is received, the session can be extended indefinitely as long as both SNs remain online and responsive to one
           another.
         </t>
         <t>
@@ -793,7 +853,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           communications with the original peers they were soliciting (or accepting).
         </t>
         <t>
-          The SIT from <xref target="summary-lifetimes"/> details a 1-minute which, based on a few conditions, can be used to invalidate
+          The SIT from <xref target="summary-lifecycle-lifetimes"/> details a 1-minute which, based on a few conditions, can be used to invalidate
           a session which otherwise might have spanned several days. When the malicious nodes are removed from the link and access is
           restored where required, the nodes coming back online only have to reattempt their session connections using the 'N' (new) flag.
           If there exists a session correlated to their purported LLID and IP Source Address, it will be invalidated after 1 minute without
@@ -811,14 +871,6 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
       </section>
 
-      <section anchor="security-management">
-        <name>Poor Session Management &amp; Correlation</name>
-        <t>
-          <!-- TODO: ND Sessions need to be kept tightly related to their NC entries. The NC entry consists of an IP and LLID, BOTH OF WHICH are the components tied to a session.
-              So even without the NC entry, the session can still be enforced -->
-        </t>
-      </section>
-
       <section anchor="security-dos">
         <name>Denial of Service</name>
         <t>
@@ -828,8 +880,8 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <section anchor="security-dos-bogus">
           <name>Bogus Session Option Replies &amp; Hijacking</name>
           <t>
-            A series of bogus NDSOs cannot invalidate a session if the legitimate SUs are both still online and are receiving
-            link traffic normally. This is because the 1-minute SIT (<xref target="summary-lifetimes"/>) will
+            A series of bogus NDSOs cannot invalidate a session if the legitimate SNs are both still online and are receiving
+            link traffic normally. This is because the 1-minute SIT (<xref target="summary-lifecycle-lifetimes"/>) will
             always be canceled upon receiving an SRC indicationtype. Additionally, NDSOs with the correct SessionID are difficult
             to spoof because NDSOs only appear in unicast packets, which typically would not be observable by outside attackers.
           </t>
