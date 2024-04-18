@@ -7,6 +7,7 @@
   <!ENTITY nbhy   "&#8209;">
   <!ENTITY wj     "&#8288;">
   <!ENTITY times  "&#215;">
+  <!ENTITY rarr   "&#x2192;">
 ]>
 
 <rfc
@@ -75,7 +76,7 @@
       <t>
         Randomized and Changing MAC addresses (RCM) is a technique which has been implemented by many software vendors to preserve
         user privacy by altogether removing any assumptions of link-layer identifiers being stable, constant values. This is better
-        documented by the MADINAS IETF Working Group in <xref target="MADINAS_CASES"/>.
+        documented by the MADINAS IETF Working Group in <xref target="I-D.ietf-madinas-use-cases"/>.
         The issue of "owning" a MAC address stems directly from this privacy-focused address mutability as replacing their originally
         intended global uniqueness. By decoupling the identity of a device from its link-layer identifier, all authentication constructs
         relying solely on that identifier must be dismantled or reshaped.
@@ -354,16 +355,16 @@
           <name>Visualized Ratcheting Hash Chains</name>
           <artwork type="ascii-art" name="exampleRatcheting.txt">
             <![CDATA[
-+~~~~~~~~~~~~~~~~~+                                +~~~~~~~~~~~~~~~~~+
-|   85  86  87 |= | Ratchets turn clockwise only,  |   85  86  87 |= |
-|     \  |  / ,|  | decrementing the Counter value |     \  |  / ,|  |
-|      \ | / /_|  | of a HC with each 'tick'.      |      \ | / /_|  |
-| 84 ---(*)--- 88 |                                | 84 ---(*)--- 88 |
-|      / | \      | <-- {SI.Session#85876.myHC}    |      / | \      |
-|     /  |  \     |               `--> .peerHC --> |     /  |  \     |
-|   ..   90  89   |    {SP.Session#85876.myHC} --> |   ..   90  89   |
-+~~~~~~~~~~~~~~~~~+               `--> .peerHC     +~~~~~~~~~~~~~~~~~+
-  [HC_SI]      ^---------------------------'         [HC_SP]
++~~~~~~~~~~~~~~~~~+                               +~~~~~~~~~~~~~~~~~+
+|   85  86  87 |= | Ratchets turn clockwise only, |   85  86  87 |= |
+|     \  |  / ,|  | decrementing the Counter value|     \  |  / ,|  |
+|      \ | / /_|  | of a HC with each 'tick'.     |      \ | / /_|  |
+| 84 ---(*)--- 88 |                               | 84 ---(*)--- 88 |
+|      / | \      |<-- {SI.Session#85876.myHC}    |      / | \      |
+|     /  |  \     |               `--> .peerHC -->|     /  |  \     |
+|   ..   90  89   |    {SP.Session#85876.myHC} -->|   ..   90  89   |
++~~~~~~~~~~~~~~~~~+               `--> .peerHC    +~~~~~~~~~~~~~~~~~+
+  [HC_SI]      ^---------------------------'        [HC_SP]
 
 * Each time a new NDSO is sent, the sending HC's ratchet MUST 'tick'
    once to decrement the counter and provide a new single-use value.
@@ -816,10 +817,10 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             the first NUD packets are exchanged (the 'hashes' are not real SHA-256 hashes but fake integers to keep things intelligible):
           </t>
           <ul spacing="compact">
-            <li><tt>N<sub>a</sub></tt> &rarr; <tt>HC<sub>SI</sub></tt> &rarr; <tt>12345@497</tt>
-            <li><tt>N<sub>a</sub></tt> &rarr; <tt>HC<sub>SP</sub></tt> &rarr; <tt>87456@497</tt>
-            <li><tt>N<sub>b</sub></tt> &rarr; <tt>HC<sub>SI</sub></tt> &rarr; <tt>87456@497</tt>
-            <li><tt>N<sub>b</sub></tt> &rarr; <tt>HC<sub>SP</sub></tt> &rarr; <tt>12345@497</tt>
+            <li><tt>N<sub>a</sub></tt> &rarr; <tt>HC<sub>SI</sub></tt> &rarr; <tt>12345@497</tt></li>
+            <li><tt>N<sub>a</sub></tt> &rarr; <tt>HC<sub>SP</sub></tt> &rarr; <tt>87456@497</tt></li>
+            <li><tt>N<sub>b</sub></tt> &rarr; <tt>HC<sub>SI</sub></tt> &rarr; <tt>87456@497</tt></li>
+            <li><tt>N<sub>b</sub></tt> &rarr; <tt>HC<sub>SP</sub></tt> &rarr; <tt>12345@497</tt></li>
           </ul>
         </li>
       </ul>
