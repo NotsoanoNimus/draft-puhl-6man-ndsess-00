@@ -62,10 +62,6 @@
   <middle>
     <section anchor="intro">
       <name>Introduction</name>
-      <!-- Inspired by Signal's double-ratchet encryption. -->
-      <!-- Rabble about complexity of SEND and other PKI stuff. Need something that can apply BROADLY, end-to-end, and at the SOFTWARE LEVEL (not network hardware) -->
-      <!-- Use of a ZKPP overlay to enforce the identity of the session peer without requiring a secured link layer. -->
-      <!-- TODO -->
       <t>
         Dubious ownership of link-layer addresses is a problem which affects the trust and integrity of higher-layer network activity.
         The conception of IEEE 802 MAC addresses intended for each address to uniquely identify network interfaces at a global scope;
@@ -196,28 +192,8 @@
         <dd>Neighbor Discovery Session Option. An ND option either initiating or continuing an ND Session.</dd>
 
         <dt>ICM</dt>
-        <dd>Interface Configuration Mode. One of three different ND Session operating modes specifying the behavior of an
+        <dd>Interface Configuration Mode. One of four different ND Session operating modes specifying the behavior of an
           interface when sending or receiving ND packets.</dd>
-
-        <dt>SN</dt>
-        <dd>Session Node. Either one of the two participants engaged in an ND Session. When pluralized, this describes both
-          participanting nodes.</dd>
-
-        <dt>SI</dt>
-        <dd>Session Interface. The node being discussed or observed in a session; the perspective or point-of-reference node.</dd>
-
-        <dt>SP</dt>
-        <dd>Session Peer. The other link node that is participating in or establishing an ND Session, relative to the perspective
-          of a perspective node (the Session Interface).</dd>
-
-        <dt>SIT</dt>
-        <dd>Session Invalidation Timer. A 1-minute timer that starts upon receipt of an invalid NDSO with an existing SessionID,
-          or a 'new' NDSO with LLID and IP parameters matching a current NC entry, after
-          which time the identified ND Session will forcibly expire unless some form of SRC is received.</dd>
-
-        <dt>SRC</dt>
-        <dd>Session Reachability Confirmation. Simply ND Reachability Confirmations (Section 7 of <xref target="RFC4861"/>) with valid,
-          authenticated NDSOs attached to them. These are used to propagate a session and reset the Expiration timer on SPs receiving them.</dd>
 
         <dt>ZKPP</dt>
         <dd>Zero Knowledge Password Proof. An authentication methodology that relies on the holder(s) of the password to prove
@@ -238,6 +214,32 @@
         <dt>FH</dt>
         <dd>Final Hash. The last hash in a hash chain which is given to external verifiers to store for ZKPP. This value is never
           used as a proof of knowledge of the Root Hash, and is only used for RHCR verifications.</dd>
+
+        <dt>SN</dt>
+        <dd>Session Node. Either one of the two participants engaged in an ND Session. When pluralized, this describes both
+          participating nodes.</dd>
+
+        <dt>SI</dt>
+        <dd>Session Interface. The node being discussed or observed in a session; the perspective or point-of-reference node.</dd>
+
+        <dt>SP</dt>
+        <dd>Session Peer. The other link node that is participating in or establishing an ND Session, relative to the perspective
+          of a perspective node (the Session Interface).</dd>
+
+        <dt>SIT</dt>
+        <dd>Session Invalidation Timer. A 1-minute timer that starts upon receipt of an invalid NDSO with an existing SessionID,
+          a 'new' flagged NDSO whose ND packet contains an IP address matching a current NC entry, or a new session initiation.
+          After this timer elapses, the identified ND Session will forcibly expire unless some form of SRC is received. Persistent
+          sessions MUST NOT use or enable the SIT for any reason.</dd>
+
+        <dt>SRC</dt>
+        <dd>Session Reachability Confirmation. Simplified ND Reachability Confirmations (Section 7 of <xref target="RFC4861"/>)
+          consisting of unicast-only NDAR with valid, authenticated NDSOs attached to them. These are used to propagate a session
+          and reset the SETs or SITs on SPs receiving them.</dd>
+
+        <dt>SET</dt>
+        <dd>Session Expiration Timer. A timer whose duration in minutes is set by the initiation of a new session. When this timer
+          elapses, the ND Session it is linked to MUST be invalidated and destroyed. SRCs MUST always refresh the duration of this timer.</dd>
       </dl>
     </section>
 
@@ -299,8 +301,7 @@
               Performance. A fixed reliance on SHA-256 and very simple concatenate-and-iterate movements lend themselves to
               drastically improved session performance on participating low-resource systems. SHA-256 is perhaps one of the most
               ubiquitous hashing algorithms, while also being significantly collision-resistant
-              (Section 4 of <xref target="SP.800-107.R1"/>). See <xref target="optimizations-hashcache"/> for robust optimizations
-              to consider for these concatenate-and-iterate movements.
+              (Section 4 of <xref target="SP.800-107.R1"/>).
             </li>
             <li>
               Privacy. Sessions are end-to-end and do not rely on a centralized infrastructure to communicate registration
@@ -465,68 +466,39 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </section>
       </section>
 
-      <section anchor="summary-state">
-        <name>Preserving State</name>
-        <t>
-          It is crucial to preserve the state of ND Sessions at all times and to keep the information as recent as possible. While
-          the responsiveness of a node in caching or updating received session details is not of critical importance, it is essential
-          to prevent any possibility of replay attacks against SNs.
-          Thus, SNs MUST actively preserve the state of all ND Sessions in which they are engaged. Because session durations
-          may extend up to days at a time without any activity (if not invalidated), SNs MUST use a persistent, non-volatile storage
-          to preserve session details.
-        </t>
-        <t>
-          If a node is powered down or otherwise loses data in its non-volatile storage, it MUST NOT lose
-          session information. Depending on the activity of the link and the volume of sessions, these details might
-          update at a rapid pace; therefore, implementations MAY choose to keep in-flight session details in a volatile
-          memory pool and regularly shadow it in batches to non-volatile, persistent storage.
-        </t>
-
-        <section anchor="summary-state-pruning">
-          <name>Session State Pruning</name>
-          <t>
-            In order to weaken attack vectors seeking to exhaust storage resources or the ability to track current sessions altogether,
-            implementations MUST consider how to manage a flood of incoming sessions. If the resources on a SN are becoming more
-            constrained and approaching their limit, the least active sessions MUST be pruned in order to preserve resources. While
-            this may ordinarily be a rare event, it is an important feature for embedded or low-power network devices having fewer resources
-            at their disposal. 'Pruning' means deleting session details which have expired or are aged, in order to make space for higher
-            priority or newer sessions.
-          </t>
-          <t>
-            The Session Reachability Confirmation feature of this specification from <xref target="summary-lifecycle-initiation"/> affords
-            protections against this problem when massive influxes of sessions are malicious, because Expirations cannot be specified beyond
-            1 minute until at least one ND Reachability Confirmation is registered beyond the initial session formation.
-          </t>
-          <t>
-            Implementations MAY use their own algorithms and heuristic analysis of current sessions to determine which of them are
-            'least active' and should be pruned. Sessions MUST NOT be pruned if there is no valid reason to do so, as clearing ND
-            Session details will defeat their protections entirely, allowing other malicious parties to 'override' current sessions
-            and temporarily lock out legitimate nodes from each other <xref target="security-lockout"/>.
-          </t>
-        </section>
-      </section>
-
       <section anchor="summary-interfaces">
         <name>Interface Configurations</name>
         <t>
-          A set of three Interface Configuration Modes (ICMs) is defined in this section. Having a few operating modes to choose
+          A set of four Interface Configuration Modes (ICMs) is defined in this section. Having a few operating modes to choose
           from will help to foster adoption of NDSOs, especially in mixed networks where not all nodes are familiar with NDSOs.
-          Interfaces MUST operate in any one of three modes affecting ND Session behaviors, chosen for the interface by the
+          Interfaces MUST operate in any one of four modes affecting ND Session behaviors, chosen for the interface by the
           implementation's discretion or by manual configuration:
         </t>
         <ul>
           <li>
-            <tt>Ignore</tt> mode. SIs MUST NOT initiate new sessions. SPs MUST NOT acknowledge any NDSOs.
+            <tt>Ignore</tt> mode. Nodes MUST NOT initiate new sessions and MUST ignore all received NDSOs.
           </li>
           <li>
-            <tt>Gregarious</tt> mode. SIs MUST always attempt session initiation when a session with the
-            SP is not already ongoing. SNs MUST NOT require SPs to reciprocate with any acknowledgements or to initiate sessions.
+            <tt>Gregarious</tt> mode. SIs MUST always attempt session initiation when a session with the SP (target NDAR IP address)
+            is not already ongoing. SNs MUST NOT expect or require SPs to reciprocate with any acknowledgements or to initiate
+            sessions. NDSOs MUST be considered optional addenda to ND traffic.
+          </li>
+          <li>
+            <tt>Gracious</tt> mode. SIs MUST always attempt session initiation when no session with the SP is already active.
+            Receivers MUST ignore ND packets which do not contain NDSOs. The 'Persistent' bit of NDSOs MUST be ignored.
           </li>
           <li>
             <tt>Strict</tt> mode. SIs MUST always attempt session initiation when a session with the
             SP is not already ongoing. Receivers MUST ignore ND packets if they do not contain NDSOs.
+            The 'Persistent' bit of NDSOs MUST be enforced when enabled on new sessions.
           </li>
         </ul>
+        <t>
+          The RECOMMENDED default ICM for most networks is the <tt>Gracious</tt> mode which prevents sessions from locking peers
+          out of communication from one another, either in the case of malice by other parties or forgetfulness by the SP, by
+          enabling the SIT for all sessions. The <tt>Strict</tt> mode is more security-focused in that SITs MAY be disabled by use of
+          the 'Persistent' flag in session initiations, thus allowing sessions to be prolonged indefinitely by receiving valid SRCs.
+        </t>
         <t>
           ND Session compatibility and features MAY be disabled on interfaces at any time and for any reason, but doing so
           will likely disrupt all current sessions in which that interface is a SN. This might create communication problems
@@ -534,75 +506,74 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
       </section>
 
-<!--       
-        IMPORTANT: SESSIONS ARE NOT USED OVER MULTICAST ND MESSAGES. BASED ON THE ICM OF THE RECEIVER, IT MAY OR MAY
-        NOT ACCEPT MULTICAST INDICATIONS OF SLLAO OR TLLAO.
+      <section anchor="summary-ndchanges">
+        <name>Modifications to Neighbor Discovery</name>
+        <t>
+          This specification proposes few modifications to the core of Neighbor Discovery; it primarily adds a new option and inserts
+          itself in key points within the ND process. More specifically, the NDAR and NUD processes are targeted as crucial areas of
+          session enforcement based on the ICM of the SI.
+        </t>
+        <t>
+          The Neighbor Discovery Session Option (NDSO; type 65) is added per <xref target="addenda-session"/>.
+        </t>
+        <t>
+          Any ND packets which seek to modify the NC of a neighbor MUST follow requirements per the current ICM of the receiving
+          interface. If the ICM dictates a session must be active, senders MUST provide the correct ZKPP authentication to change
+          LLID or target information.
+        </t>
+        <t>
+          Multicast ND messages MUST NOT include an attached NDSO, but an initiating (i.e., 'new' flagged) NDSO MAY be sent with an
+          NS packet to a solicited-node multicast address. Implementations MAY choose to ignore this optional capability, restricting
+          NDSOs to unicast-only traffic, by simply delaying session initiation until the NUD (unicast NDAR) process shortly after
+          exchanging SLLAO and TLLAO details; this is NOT RECOMMENDED.
+        </t>
+        <t>
+          The NUD process, as defined in Section 7.3 of <xref target="RFC4861"/>, MUST ignore Reachability Confirmations coming from
+          upper-layer protocol "hints" if the current ICM is not in the <tt>Ignore</tt> mode and a session is ongoing with the neighbor.
+          For example, TCP transmissions with a SP are no longer sufficient to keep the state of the SP NC entry in a REACHABLE state.
+          Nodes instead use unicast NDAR to proactively avoid STALE-ness, also known as Session Reachability Confirmations, as if the
+          NC entry already were in the STALE state. See <xref target="summary-lifecycle-src"/> for more information about this process.
+        </t>
+        <t>
+          NC entries MUST NOT be purged if unexpired, valid sessions are still stored and associated with them. This allows session
+          persistence features to "remember" the parameters associated with NDAR instances long-term, because part of ZKPP session
+          authentication relies on NC entry details to form the hashing Salt value. Additionally, if a session is invalidated, expired,
+          or otherwise destroyed, the associated NC entry MUST be immediately purged regardless of ICM.
+        </t>
+      </section>
 
-        IMPORTANT: NODES RETRYING TO CONNECT TO THE SESSION >CANNOT< EVER USE THE ROOT HASH IN DOING SO. IF THE HC IS AT OR BELOW 10%
-        OF ITS COUNT, ONLY A FEW MORE INTERMEDIATES CAN BE TRIED, BUT NEVER THE ROOT HASH. NODES SHOULD GIVE UP ON THE SESSION AND TRY
-        THE 'N' BIT STRATEGY BEFORE EVER REVEALING A ROOT HASH IN RETRIES, BECAUSE THE RH MIGHT GET STOLEN.
-
+      <section anchor="summary-state">
+        <name>Preserving State</name>
         <t>
-          In a two-way ND session, hosts are expected to exchange all required initial information for the corresponding node at the other
-          end of the session to verify submitted session details. Once 
+          It is crucial to preserve the state of ND Sessions at all times and to keep the information as recent as possible. While
+          the responsiveness of a node in caching or updating received session details is not of critical importance, it is essential
+          to prevent any possibility of replay attacks against SNs. Because session durations may extend up to hours at a time without
+          any activity (if not invalidated), SNs MUST use a persistent, non-volatile storage to preserve session details.
         </t>
         <t>
-          The following list outlines some general requirements for two-way NDP Sessions:
-        </t>
-        <ul>
-          <li>
-            Information related to Session options MUST be stored persistently on-disk. It MUST NOT be deleted until the session expires.
-            This information includes: local Root Hash, local Counter, local CounterMax, local ExpirationMin, remote Counter &amp; remote
-            FinalHash.
-          </li>
-          <li>
-            Session options MUST be used only with unicast ND traffic, with the exception of the initial multicast Neighbor Solicitation to
-            find a target node's Target Link-Layer Address information. If Session options appear in any other multicast exchange, they MUST
-            be ignored by receivers.
-          </li>
-          <li>
-            SHA-256 MUST be used exclusively for all hash chaining and all subsequent verifications. Another hashing algorithm MAY supersede
-            this appointment in future protocol amendments.
-          </li>
-          <li>
-            Persistent sessions SHOULD only be used on stable networks where nodes are not frequently entering or exiting the network. Relying
-            on the 'ExpirationMin' time for the session to expire without valid ND messages is almost always a better option because it is
-            forgiving of potential node forgetfulness.
-          </li>
-        </ul>
-        <t>
-          NDP Sessions are visualized in the following figure:
-        </t>
-        <figure anchor="session-demo">
-          <name>Neighbor Discovery Sessions</name>
-          <artwork type="ascii-art" name="ndpSessions.txt">
-            <![CDATA[
-            ]]>
-          </artwork>
-        </figure>
-        <t>
-          An ND Session is a long-term exchange bound to one single instance of NDAR between a set of LLIDs and IP addresses.
-          Changing any of those four variables will necessitate a new Session be formed. A per-session,
-          random password is chosen on each session node, whose hash value is repeatedly iterated with a salt value consisting of
-          session variables and then given to the session peer. Nodes can prove knowledge of their initial passwords in each ND
-          message by slowly revealing each one-time-use 'ancestor' hash in the iteration chain, going back to the Root Hash. See
-          the specification <!- ref -> for more information about the inner workings of ND Sessions.
+          To preserve session details means preserving the state of an associated NC entry is REQUIRED, regardless of the time elapsed
+          since the last Reachability Confirmation was received.
         </t>
         <t>
-          ZKPP-based sessions therefore provide strong protection against Identity Assumption attacks occurring in the middle
-          of a communication between two neighbors. They are still susceptible to impersonations at the very start of the ND
-          Session, but this would require a very opportunistic and reactive attacker, since Sessions can last up to days at a time
-          without any update. Implementing ND Session options with VBAs, then, simply (again) shims the NDAR process with
-          Session options. Such implementations <bcp14>SHOULD</bcp14> always validate the underlying session BEFORE processing any VBA verifications.
+          If a node is powered down or otherwise loses data in its non-volatile storage, it MUST NOT lose
+          session information. Depending on the activity of the link and the volume of sessions, these details might
+          update at a rapid pace; therefore, implementations MAY choose to keep in-flight session details in a volatile
+          memory pool and regularly shadow it in batches to non-volatile, persistent storage.
         </t>
-      -->
+      </section>
 
       <section anchor="summary-lifecycle">
         <name>Session Lifecycles</name>
         <t>
           Every ND Session is considered as having a lifecycle due to its initiation process, its maintenance phase, and its ability to
-          expire or be invalidated. This section discusses different phases of the session lifecycle and how they are intended to be
-          controlled by implementations.
+          expire or be invalidated (depending on persistence). This section discusses different phases of the session lifecycle and how
+          they are intended to be controlled by implementations.
+        </t>
+        <t>
+          Session are decoupled from NC entries, so as to allow implementations to track and store information about each separately.
+          This also simplifies integration of NDSOs.
+          For example, a NC entry might be set to the STALE state or otherwise destroyed, but information about the ND Session MUST
+          remain until it is either invalidated, expires, or is refreshed.
         </t>
 
         <section anchor="summary-lifecycle-initiation">
@@ -612,45 +583,33 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           </t>
         </section>
 
-        <section anchor="summary-lifecycle-lifetimes">
-          <name>Intended Durations &amp; Expirations</name>
-              <!-- Hosts receiving a bad NDSO response must send back an ICMP Dest Unreach to the cached peer. It will
-                then wait 1 minute for continued forward progress (Reach Conf) before dropping the peer's NC entry
-                and ND Session entirely. -->
-          <t>
-          </t>
-        </section>
-
         <section anchor="summary-lifecycle-src">
-          <name>Session Reachability Confirmations</name>
+          <name>Maintenance &amp; Session Reachability Confirmations</name>
           <t>
             <!-- A session must be confirmed at least once, meaning the peer's LLID has been validated as receiving and responding to
               traffic for this NDSO. This will allow the session expiration to extend to its ACTUAL time. Nodes have 1 minute to complete
               this transaction or the session will expire. -->
+            Session Reachability Confirmation (SRCs) are very similar to Neighbor Reachability Confirmations as defined in Section 7.3.1
+            of <xref target="RFC4861"/>, except an SRC MUST NOT include the notion of "hints" from upper-layer protocols in its
+            definition. Therefore, SRCs MUST come from valid NDSOs that are attached to NS or NA packets during the ND-native NUD process
+            that relies on 
           </t>
-        </section>
-
-        <section anchor="summary-lifecycle-maintenance">
-          <name>Session Maintenance</name>
           <t>
-            <!-- TODO: ND Sessions need to be kept tightly related to their NC entries. The NC entry consists of an IP and LLID, BOTH OF WHICH are the components tied to a session.
-                So even without the NC entry, the session can still be enforced -->
-            Care MUST be taken not to tightly couple ND Sessions to NC entries, because NC entries are ephemeral and constantly changing.
-            Instead, packets with NDSOs MUST always firstly use their IDs in lookups, then their LLID-to-IP bindings (as a pair). This means
-            implementations MUST handle receipt of NDSOs by 
+            Certain session-related timers rely on SRCs to provide the most recent confirmation that a peer LLID is still owned by
+            the original peer participating in the session. Thus, NUD exchanges that 
           </t>
         </section>
-      </section>
 
-      <section anchor="summary-ndchanges">
-        <name>Modifications to Neighbor Discovery</name>
-        <!-- Surprise! No modifications. Just caching behavior based on interface configuration mode. -->
-        <!-- TODO! -->
-        <t>
-          This specification proposes no modifications to the core of Neighbor Discovery; it only adds a new option and inserts
-          itself in key points within the ND process. More specifically, the NDAR exchange is targeted as a crucial area of session
-          enforcement based on the ICM of the SI.
-        </t>
+        <section anchor="summary-lifecycle-lifetimes">
+          <name>Timers, Failures, &amp; Invalidations</name>
+            <!-- SET & SIT, initial 1-minute SRC timer (SET is inititally set to 1-minute) -->
+            <!-- NEVER NEVER USE THE RH WHEN ATTEMPTING TO RECONNECT -->
+            <!-- Hosts receiving a bad NDSO response must send back an ICMP Dest Unreach to the cached peer. It will
+              then wait 1 minute for continued forward progress (Reach Conf) before dropping the peer's NC entry
+              and ND Session entirely. -->
+          <t>
+          </t>
+        </section>
       </section>
     </section>
 
@@ -711,18 +670,21 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dt>Length</dt><dd>18. The total length of the Session option from the Type through its end -- inclusive -- in units of 8 octets.</dd>
           <dt>P</dt>
           <dd>
-            Persistent bit. When this is a new session, indicates the exchange is intended to establish a long-term, ongoing ND Session.
-            The 'Expiration' field becomes units of hours rather than minutes.
+            Persistent bit. When the NDSO is forming a new session, indicates the exchange is intended to establish a long-term, ongoing ND
+            Session that cannot be invalidated. This is a high-fidelity setting because SNs must trust one another not to lose critical session
+            details. If a session cannot be invalidated with an SIT, its full Expiration timer MUST elapse without SRCs, which presents a dangerous
+            opportunity for malicious lockout (<xref target="security-lockout"/>). Nodes MUST NOT honor the Persistent bit unless they are using
+            the Strict ICM.
           </dd>
           <dt>N</dt>
           <dd>
-            New bit. Indicates the Session option intends to establish a new Session for communication between two hosts. The ND Source Link-Layer
-            Address option MUST be included in the same NDP packet when this bit is set.
+            New bit. Indicates the Session option intends to establish a new Session for communication between two hosts. The SLLAO MUST be
+            included in the same ND packet when this bit is set.
           </dd>
           <dt>A</dt>
           <dd>
-            Acknowledgement bit. Indicates the Session option is responding directly to a New Session (using the 'N' bit set to 1). The Target
-            Link-Layer Address option MUST be included in the same NDP packet when this bit is set.
+            Acknowledgement bit. Indicates the Session option is responding directly to a New Session (using the 'N' bit set to 1). The TLLAO
+            MUST be included in the same ND packet when this bit is set.
           </dd>
           <dt>Version</dt>
           <dd>
@@ -735,20 +697,9 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dt>Expiration</dt>
           <dd>
             <t>
-              Dictates the amount of time taken for the ND Session to expire when no session activity occurs. 'Expiration' means storage
-              of session parameters and associations to NC entries MUST be destroyed in order to invalidate the session from continuing.
-            </t>
-            <ul spacing="compact">
-              <li>
-                If the session IS NOT perisistent: this field MUST be measured in minutes.
-              </li>
-              <li>
-                If the session IS persistent: this field MUST be measured in hours.
-              </li>
-            </ul>
-            <t>
-              This value MUST be greater than or equal to 3.
-            </t>
+              Dictates the amount of time taken, in minutes, for the ND Session to expire when no session activity occurs. 'Expiration'
+              means storage of session parameters and associations to NC entries MUST be destroyed in order to invalidate the session
+              from continuing. This value MUST be greater than or equal to 1.
           </dd>
           <dt>SessionID</dt>
           <dd>
@@ -802,12 +753,26 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             SLLAO or TLLAO was included in the incoming ND packet, then the ICMP Destination Unreachable is NOT REQUIRED since the receiving
             node would not know where to send it.
           </t>
+          <ul>
+            <li>
+              NDSOs MUST be received only via unicast ND traffic, with the exception of the initial multicast NS to resolve a target's TLLAO
+              and to initiate a new session.
+            </li>
+            <li>
+              SHA-256 MUST be used exclusively for all hash chaining and all subsequent verifications. Another hashing algorithm MAY supersede
+              this appointment in future protocol amendments.
+            </li>
+            <li>
+              Persistent sessions SHOULD only be used on stable networks where nodes are not frequently entering or exiting the network. Relying
+              on the 'ExpirationMin' time for the session to expire without valid ND messages is almost always a better option because it is
+              forgiving of potential node forgetfulness.
+            </li>
+          </ul>
         </section>
       </section>
     </section>
 
     <section anchor="example">
-      <!-- TODO -->
       <name>An Example Session</name>
       <t>
         It is useful to first create some context before presenting the process of a legitimate session.
@@ -818,7 +783,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       <ul spacing="compact">
         <li>N<sub>a</sub> (SI) has IP address <tt>2001:db8::12bc:8090/64</tt> with an interface LLID of <tt>3B-55-0C-00-12-33</tt>.</li>
         <li>N<sub>b</sub> (SP) has IP address <tt>2001:db8::aaaa:bbbb/64</tt> with an interface LLID of <tt>BC-71-A3-89-CC-60</tt>.</li>
-        <li>Both nodes are operating in the Strict ICM.</li>
+        <li>Both nodes are operating in the <tt>Gracious</tt> ICM.</li>
         <li>
           <t>
             The <tt>FinalHash@Counter</tt> values of each respective chain are as follows AFTER the ND Session is fully established and
@@ -834,7 +799,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       </ul>
       <t>
         N<sub>a</sub> would like to perform NDAR for N<sub>b</sub>'s IP address in order to forward link-layer frames to the correct address.
-        Since both interfaces are using a Strict configuration, no ND packets will be accepted without valid attached NDSOs.
+        Since both interfaces are using the <tt>Gracious</tt> ICM, no ND packets will be accepted without valid attached NDSOs.
       </t>
       <ol>
         <li>
@@ -849,29 +814,34 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <li>
           <tt>N<sub>a</sub></tt> sends a solicited-multicast NS to <tt>ff02::1:ffaa:bbbb</tt>, including the 'New' (initiate) NDSO with <tt>HC<sub>SI</sub></tt>,
           a non-persistent expiration of 30 minutes, and a pseudo-random <tt>SessionID</tt>.
-          The NS also includes the SLLAO option. The 1-minute SIT begins on <tt>N<sub>a</sub></tt> for the <tt>HC<sub>SI</sub></tt>.
+          The NS also includes the SLLAO option as required. The 1-minute SIT begins on <tt>N<sub>a</sub></tt> for the <tt>SessionID</tt>.
+          The 1-minute preliminary SET also begins on the same node for the <tt>SessionID</tt>.
         </li>
         <li>
           <t>
             <tt>N<sub>b</sub></tt> receives the multicast NS. Before caching the LLID for the IP Source Address, it searches for a valid NDSO
-            according to the Strict ICM. Once found, it examines the <tt>SessionID</tt> to determine which session this is relevant to. Since no
-            session yet exists by that ID (because it is new), <tt>N<sub>b</sub></tt> checks its NC to determine if a cache entry for that LLID
-            and IP combination already exists.
+            according to the <tt>Gracious</tt> ICM. Once found, it examines the <tt>SessionID</tt> to determine which session this is relevant to. Since no
+            session yet exists by that ID (because it is new), <tt>N<sub>b</sub></tt> checks its NC to determine if a cache entry for the IP Source
+            Address already exists.
           </t>
           <t>
-            If that pair DOES exist, and the incoming session details do not match the last session for that entry, a 1-minute SIT for that NC entry's
-            session begins. If that pair DOES NOT exist, <tt>N<sub>b</sub></tt> begins calculating and storing the details of <tt>HC<sub>SP</sub></tt>.
+            If an NC entry DOES exist, and the incoming session details do not match the last session for that entry, a 1-minute SIT for that NC entry's
+            session begins. If an NC entry DOES NOT exist, <tt>N<sub>b</sub></tt> begins calculating and storing the details of <tt>HC<sub>SP</sub></tt>.
           </t>
           <t>
             Since the NDSO packet says the <tt>Counter</tt> is 499 and the <tt>CounterMax</tt> is 500, <tt>N<sub>b</sub></tt> must iterate the input
             <tt>CurrentHash</tt> (with the appropriate Salt value) by <tt>500 - 499</tt> times (i.e., once) to get the value of <tt>FinalHash</tt>.
-            Once that computation verifies, <tt>N<sub>b</sub></tt> creates a new NC entry per the NDP specification <xref target="RFC4861"/>. The SIT
-            of 1 minute begins on <tt>N<sub>b</sub></tt> for <tt>HC<sub>SP</sub></tt>. The session is correlated to the NC entry.
+            Once that computation verifies, <tt>N<sub>b</sub></tt> creates a new NC entry per the NDP specification <xref target="RFC4861"/>.
+          </t>
+          <t>
+            The SIT of 1 minute begins on <tt>N<sub>b</sub></tt> for the <tt>SessionID</tt>.
+            The 1-minute preliminary SET also begins on the node for the session.
+            The <tt>SessionID</tt> is locally correlated to the new NC entry.
           </t>
         </li>
         <li>
           <tt>N<sub>b</sub></tt> then forms its own <tt>HC<sub>SI</sub></tt> as in Step 2. It also opts to use a <tt>CounterMax</tt> of 500 and a
-          first <tt>Counter</tt> value of 499.
+          first <tt>Counter</tt> value of 499, for the sake of symmetry.
         </li>
         <li>
           <tt>N<sub>b</sub></tt> sends a unicast NA with an 'A' (acknowledgement) NDSO attached, mirroring many of the parameters from the NDSO it
@@ -880,7 +850,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <li>
           <tt>N<sub>a</sub></tt> receives the unicast NA and follows a similar session lookup process as in Step 4. Parsing is almost immediate
           because the <tt>SessionID</tt> is now a known and shared value between the two hosts. <tt>N<sub>a</sub></tt> validates the NDSO and stores
-          the SP's HC information in its <tt>HC<sub>SP</sub></tt>.
+          the SP's HC information in its <tt>HC<sub>SP</sub></tt>. The <tt>SessionID</tt> is locally correlated to the new NC entry from the NA.
         </li>
         <li>
           The first set of NUD packets exchanged between the two SNs with NDSOs attached act as SRCs, so the SIT timers are canceled and the Expiration
@@ -890,32 +860,68 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       <t>
         The ND Session can then enter a stable maintenance phase after this initial "handshaking", where NUD packets with NDSOs attached will continue
         to refresh the Expiration timers for each SN in the exchange. If an SN's LLID changes (or it attempts to force a new one), its own
-        <tt>HC<sub>SI</sub></tt> RH needs to be revealed to the other SN in order to update the Neighbor Cache. And whenever one SN's HC is finalized,
-        the other should follow in turn (but does not need to).
+        <tt>HC<sub>SI</sub></tt> RH needs to be revealed to the other SN in order to update the Neighbor Cache accordingly. And whenever one SN's
+        HC is finalized, the other should follow in turn (but does not need to).
+      </t>
+      <t>
+        This example session represents an overlap atop the normal NDAR process, but theoretically this process of session initiation MAY occur
+        during any point of an ND exchange, even in the middle of NUD transactions that have been occurring for quite some time (see
+        <xref target="summary-lifecycle-initiation"/>). In such cases, as long as the LLID option of whichever type is present with the NDSO,
+        then the session can be formed and maintained the same as any other time in the ND process.
       </t>
 
       <section anchor="example-malice">
         <name>Attempting to Subvert the Session</name>
         <t>
-          In this section, key moments from the example exchange above are explored for exploitation by a malicious node. This hypothetical
-          malicious party has no particular goal in mind and simply wants to jab at the session to "see what it can do".
+          In this section, key moments from the example exchange above are explored for exploitation by a malicious node, labeled <tt>N<sub>m</sub></tt>.
+          This hypothetical malicious party has no particular goal and simply seeks disruption of the target session by any means necessary.
         </t>
-      </section>
-    </section>
-
-    <section anchor="optimizations">
-      <name>Optimizations</name>
-      <t>
-        This section describes some optimizations which MAY be applied to this specification in order to selectively improve performance.
-        These optimizations are NOT REQUIRED in order to fully implement this specification.
-      </t>
-
-      <section anchor="optimizations-hashcache">
-        <name>CurrentHash Caching</name>
-        <!-- if the next item in a HC is usually HC_x-i where i > 0, then it's safe to assume the hash should "end up" at HC_x when computing
-              this saves a lot of time because receivers don't need to hash all the way up to CounterMax in order to verify -->
-        <t>
-        </t>
+        <ul>
+          <li>
+            <t>
+              Between steps 2 and 3, <tt>N<sub>m</sub></tt> can immediately respond to the NS from <tt>N<sub>a</sub></tt> with both an invalid NDSO
+              and a bogus LLID in the TLLAO. This is a classic ND redirection (i.e., on-path) attack (see Section 4.1.1 of <xref target="RFC3756"/>)
+              and also represents a hijacking of the ND Session. This is ultimately a race condition if <tt>N<sub>b</sub></tt> "hears" the NS
+              multicast and wishes to respond; <tt>N<sub>m</sub></tt> must reply as quickly as possible in order to lock in and redirect the session.
+            </t>
+            <t>
+              Solving the issue of ND redirection attacks upon session and ND initiation, as an abuse of Trust On First Use <xref target="TOFU"/>, is
+              beyond the scope of what ND Sessions aim to solve. It is better left to solutions which perform some form of LLID binding or verification
+              <xref target="VBA"/>, where nodes cannot falsify or redirect a LLID for a local IP address.
+            </t>
+          </li>
+          <li>
+            <t>
+              Once the session enters its 'maintenance' phase, <tt>N<sub>m</sub></tt> could somehow intercept a ZKPP intermediate hash from one
+              of the two SNs (through some means which is extrapolated here). Even so, providing this ZKPP to the SP (as long as it is not the RH
+              of the SI's HC) does not permit changing any NC entry options because the Salt value uses the known LLID and IP address of the entry.
+            </t>
+            <t>
+              However, if the intercepted ZKPP is the RH of the chain, then the session can be hijacked entirely. Knowledge of the RH allows the SI
+              to change the LLID of the NC entry on the SP. This is precisely why (1) NDSOs
+              are almost entirely unicast-only options and (2) finalizing a HC (and thus revealing its RH) is randomized below a certain <tt>Counter</tt>
+              threshold -- to make RH ZKPP harder to predict. This is an unfortunate vulnerability of NDSOs, but is largely infeasible due to the
+              amount of impersonation effort (or luck) required to acquire a RH. If <tt>N<sub>m</sub></tt> is arbitrating the SN connections in such
+              a way, then there are likely greater concerns about the security of the link.
+            </t>
+          </li>
+          <li>
+            <t>
+              In any phase of the process, <tt>N<sub>m</sub></tt> could try to blast either SN with 'new' sessions matching the IP address of
+              either SP. Non-persistent sessions such as this will begin a 1-minute SIT that can only be canceled by SRCs. As long as both
+              <tt>N<sub>a</sub></tt> and <tt>N<sub>b</sub></tt> remain responsive, this is not a problem because legitimate NDSOs will cancel the
+              respective timers. But if either host is away or off-link, the session could be invalidated after one of the SITs elapses.
+            </t>
+            <t>
+              The solution to repeated attempts of <tt>N<sub>m</sub></tt> triggering the SIT is to enforce the Persistent bit for the session. This
+              would require both SNs (<tt>N<sub>a</sub></tt> and <tt>N<sub>b</sub></tt>) to use the <tt>Strict</tt> ICM, which would allow session
+              persistence. When the SIT is removed, the SNs maintain high fidelity in one another to remember all session details, and will NOT
+              preemptively expire their session before the entirety of their 30-minute SET elapses. Implementations MAY permit their own on-the-fly
+              changes to ICM that could allow SNs to 'upgrade' their session to a persistent one, but specific details of doing so are left to each
+              implementation.
+            </t>
+          </li>
+        </ul>
       </section>
     </section>
 
@@ -927,14 +933,16 @@ SAME CHAIN ACCORDING TO RECEIVERS:
       </t>
       <t>
         The majority of nodes SHOULD start in the Ignore ICM when they are not ready to parse any NDSOs. Nodes SHOULD NOT ever
-        be in the Strict ICM while being a member of a transitioning network, because encountering a neighbor without support for
-        NDSOs will make NDAR processes fail consistently. As more nodes become capable of managing ND Sessions, the Gregarious
-        ICM SHOULD be gradually introduced to have "pockets" of successful sessions. Once those are proven to function, clusters
-        of devices with Strict ICMs configured could work without issue.
+        be in the <tt>Strict</tt> or <tt>Gracious</tt> ICM while being a member of a transitioning network, because encountering
+        a neighbor without support for NDSOs will make NDAR processes fail consistently. As more nodes become capable of managing
+        ND Sessions, the <tt>Gregarious</tt> ICM SHOULD be gradually introduced to have "pockets" of successful sessions. Once
+        those are proven to function, clusters of devices with <tt>Strict</tt> or <tt>Gracious</tt> ICMs configured could work
+        without issue.
       </t>
       <t>
         Ultimately, a successful transition to using enforced ND Sessions on a local network is accomplished by gradually sweeping
-        all nodes from the Ignore ICM through to the Strict ICM, as the deployment situation and network infrastructure permits.
+        all nodes from the Ignore ICM through to the <tt>Strict</tt> or <tt>Gracious</tt> ICMs, as the deployment situation and
+        network infrastructure permits.
       </t>
     </section>
 
@@ -974,7 +982,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           denying their ability to form a session with the peer.
         </t>
         <t>
-          Other solutions exist to provide a proof of address ownership (<xref target="RFC3972"/> and <!-- xref target="VBA"/ -->) in one
+          Other solutions exist to provide a proof of address ownership (<xref target="RFC3972"/> and <xref target="VBA"/>) in one
           way or another, and those specifications are designed to resolve this falsification issue in the first place. But the focus
           of this section necessarily emphasizes the importance of recovering from a lockout instead. Once malicious nodes have been
           removed from the link, the neighbors who actually own the targeted IP addresses need to have the ability to recover
@@ -982,7 +990,11 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
         <t>
           The SIT from <xref target="summary-lifecycle-lifetimes"/> details a 1-minute timer which, based on a few conditions, can be used
-          to invalidate a session which otherwise might have spanned several days. When the malicious nodes are removed from the link and
+          to invalidate a session that otherwise might have spanned several hours. This feature is not an option for persistent sessions:
+          for removing lockout from such sessions, manual intervention is REQUIRED.
+        </t>
+        <t>
+          When the malicious nodes are removed from the link and
           access is restored where required, the nodes coming back online only need to reattempt their session connections using the 'N' (new) flag.
           If there exists a session correlated to their purported LLID and IP Source Address, it will be invalidated after 1 minute without
           receiving any SRCs; the peer will be freed again to reestablsh a legitimate session with the restored node. Since the impersonators
@@ -999,6 +1011,29 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         </t>
       </section>
 
+      <section anchor="security-pruning">
+        <name>Session State Pruning</name>
+        <t>
+          In order to weaken attack vectors seeking to exhaust storage resources or the ability to track current sessions altogether,
+          implementations MUST consider how to manage a flood of incoming sessions. If the resources on a SN are becoming more
+          constrained and approaching their limit, the least active sessions MUST be pruned in order to preserve resources. While
+          this may ordinarily be a rare event, it is an important feature for embedded or low-power network devices having fewer resources
+          at their disposal. 'Pruning' means deleting session details which have expired or are aged, in order to make space for higher
+          priority or newer sessions.
+        </t>
+        <t>
+          The Session Reachability Confirmation feature of this specification from <xref target="summary-lifecycle-src"/> affords
+          protections against this problem when massive influxes of sessions are malicious, because SETs default to a preliminary
+          duration of 1 minute until at least one SRC is registered beyond the session establishment.
+        </t>
+        <t>
+          Implementations MAY use their own algorithms and heuristic analysis of current sessions to determine which of them are
+          'least active' and should be pruned. Sessions MUST NOT be pruned if there is no valid reason to do so, as clearing ND
+          Session details will defeat their protections entirely, allowing other malicious parties to 'override' current sessions
+          and temporarily lock out legitimate nodes from each other.
+        </t>
+      </section>
+
       <section anchor="security-dos">
         <name>Denial of Service</name>
         <t>
@@ -1010,11 +1045,12 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <t>
             A series of bogus NDSOs cannot invalidate a session if the legitimate SNs are both still online and are receiving
             link traffic normally. This is because the 1-minute SIT (<xref target="summary-lifecycle-lifetimes"/>) will
-            always be canceled upon receiving an SRC indicationtype. Additionally, NDSOs with the correct SessionID are difficult
-            to spoof because NDSOs only appear in unicast packets, which typically would not be observable by outside attackers.
+            always be canceled upon receiving an SRC indication. Persistent sessions are always immune to this attack. Additionally,
+            NDSOs with the correct SessionID are difficult to spoof or determine because NDSOs only appear in unicast packets
+            beyond an initial NS multicast.
           </t>
           <t>
-            Flip-flopping expiration timers from invalid NDSOs might become a problem on some systems. Where such concerns are
+            Flip-flopping SETs from invalid NDSOs might become a problem on some systems. Where such concerns are
             valid, it is RECOMMENDED to introduce some kind of network intrusion detection system capable of determining floods
             of bogus NDSOs from neighbors. The system could be tasked with either reacting to the threat(s) directly or notifying
             an administrator who can resolve the issue -- the choice is left to the implementation and use-case.
@@ -1032,7 +1068,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <name>Resource Exhaustion</name>
           <t>
             Storing additional state information about ND Sessions could be considerably costly on host devices if the NDSO were
-            abused to generate and store many fake sessions on a target. Session State Pruning (<xref target="summary-state-pruning"/>)
+            abused to generate and store many fake sessions on a target. Session State Pruning (<xref target="security-pruning"/>)
             attempts to mitigate this security concern by ensuring that resources from unused or bogus session initiations are
             returned expediently and intelligently, without affecting active and legitimate sessions.
           </t>
@@ -1100,7 +1136,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             <date year="1981" month="November"/>
             <abstract>
               <t>
-                Original research resulting in the use of one-way cryptographic hashes as one-time passwords.
+                Original research resulting in the use of one-way cryptographic hashes as one-time passwords and ZKPP.
               </t>
             </abstract>
           </front>
@@ -1273,7 +1309,7 @@ VERIFIER'S PERSPECTIVE:
       </figure>
     </section>
 
-    <section anchor="appendix-code">
+    <!-- <section anchor="appendix-code">
       <name>Code Snippets</name>
       <t>
         This section contains various sample code snippets related to this document. All code is written in C and does
@@ -1386,7 +1422,7 @@ void hash_chain__iterate(void *res_buffer,
     /* For this specification, the salt is the 32-bit SessionID. */
     memcpy((working_buffer + 32), salt, 4);
     
-    while (iterations--) {
+    while (iterations - -) {
         /* Use the working_buffer as the data source at 36
             bytes long and res_buffer as a destination for
             the hash output. */
@@ -1496,6 +1532,6 @@ int process_ndsess(ndc_entry_t *cache_entry,
         The author would like to thank Dr. Jinhua Guo of the University of Michigan for his valuable,
         constructive feedback and support of this document.
       </t>
-    </section>
+    </section> -->
   </back>
 </rfc>
