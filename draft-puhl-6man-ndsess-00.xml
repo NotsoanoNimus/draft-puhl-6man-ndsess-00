@@ -327,9 +327,11 @@
         <t>
           The very first 'root password' used to seed a new session is formed into an initial hash, called a Root Hash (RH). This RH is then
           the basis of ZKPP authentication with the SP until the SI swaps it for another. The RH is used to form a Hash Chain (HC) of variable
-          length by repeatedly iterating and salting resulting hash values up to a selected count. The last hash in this iterative process is
-          called the Final Hash (FH). The maximum 'Count' value, which indicates the length of the HC for the SI, is sent with the FH to the
-          SP, who can then use those two items hence to authenticate single-use tokens consisting of intermediate hash values in the SI's HC.
+          length by repeatedly iterating and salting resulting hash values up to a selected <tt>CounterMax</tt>. The last hash in this iterative process is
+          called the Final Hash (FH). The <tt>CounterMax</tt> value, which indicates the length of the HC for the SI, is sent with the FH to the
+          SP, who can then use those two items hence to authenticate single-use tokens consisting of intermediate hash values in the SI's HC. The
+          intermediate hashes are a set of ZKPP values produced by the RH iterated <tt>CounterMax - Counter</tt> times, where <tt>Counter</tt> is
+          some value <tt>0 &lt; Counter &lt; CounterMax</tt>.
         </t>
         <t>
           The purpose of the single-use hashes is to safely allow up to any arbitrary amount of derived one-time tokens from the RH,
@@ -343,15 +345,15 @@
         <t>
           From the perspectives of each SN, there is an HC for itself (the <tt>HC<sub>SI</sub></tt>) and its SP (the <tt>HC<sub>SP</sub></tt>).
           Both of these chains are instrumental in assuring a session adequately protects and enforces the validity of exchanged ND packets.
-          The former chain is used to offer the latest single-use hash to the peer according to a decrementing counter, and the latter is used
-          to verify the authenticity of received NDSOs from the peer.
+          The former chain is used to offer the latest single-use hash to the peer according to the decrementing <tt>Counter</tt>, and the
+          latter is used to verify the authenticity of received NDSOs from the peer.
         </t>
         <t>
-          Information about the SP and SI HCs can be visualized as two mechanical ratchets, a familiar concept in cryptography and secure messaging <xref target="RATCHET"/>.
-          'Ticking' a ratchet means moving to the next value, or one of the next values, of the tool; doing so cannot be reversed for any
-          reason, to follow the ratchet analogy. When the SP ticks its ratchet, it indicates doing so by providing its new intermediate hash
-          at the given ratchet value (i.e., count), thus invalidating any value greater than it which has already 'ticked by' in the spinning
-          ratchet gear.
+          Information about the SP and SI HCs can be visualized as two mechanical ratchets, a familiar concept in cryptography and secure
+          messaging <xref target="RATCHET"/>. 'Ticking' a ratchet means moving to the next value, or one of the next values, of the tool; doing
+          so cannot be reversed for any reason, to follow the ratchet analogy. When the SP ticks its ratchet, it indicates doing so by providing
+          its new intermediate hash at the given ratchet value (i.e., <tt>Counter</tt>), thus invalidating any value greater than it which has
+          already 'ticked by' in the spinning ratchet gear.
         </t>
         <figure anchor="ratchet-chains">
           <name>Visualized Ratcheting Hash Chains</name>
@@ -369,7 +371,7 @@
   [HC_SI]      ^---------------------------'        [HC_SP]
 
 * Each time a new NDSO is sent, the sending HC's ratchet MUST 'tick'
-   once to decrement the counter and provide a new single-use value.
+   once to decrement the Counter and provide a new single-use value.
 * When a ratchet reaches 0, or the HC is finished, a new one is made.
 * These ratchets are NOT REQUIRED to be synchronized with each other.
    This is why each Session Node stores information about both.
@@ -378,7 +380,7 @@
         </figure>
         <t>
           These ratchets are NOT REQUIRED to be synchronized, but often are. So when an SI receives a new 'tick' from an SP, it MAY
-          match the counter value depending on the synchronization of the <tt>HC<sub>SI</sub></tt> and the <tt>HC<sub>SP</sub></tt> chains.
+          match the <tt>Counter</tt> value depending on the synchronization of the <tt>HC<sub>SI</sub></tt> and the <tt>HC<sub>SP</sub></tt> chains.
           Likewise, when <tt>HC<sub>SP</sub></tt> is finalized and moves to a new chain, the SI MAY finalize and renew its <tt>HC<sub>SI</sub></tt>
           with the peer.
         </t>
@@ -393,15 +395,17 @@
           </t>
           <t>
             Following with terms and concepts from the authentication model already presented,
-            a 'reverse hash chain' consists of a series of one-way iterative hashes. The 'final hash' of the chain represents a terminal
-            value which all ancestor hashes -- or 'links', to satify the chain analogy -- will arrive at after some applied 'Counter' value
-            of iterations. The 'final hash' H<sub>counter</sub> is a public and essential ZKPP value for the verifying session peer to store
-            persistently.
+            a 'reverse hash chain' consists of a series of one-way iterative hashes. The <tt>FinalHash</tt> of the chain represents a terminal
+            value which all ancestor hashes -- or 'links', to satify the chain analogy -- will arrive at after some applied <tt>CounterMax</tt> value
+            of iterations. The <tt>FinalHash</tt> of <tt>H<sub>CounterMax</sub></tt> is a public and essential ZKPP value for the verifying
+            peer node to store persistently, along with the <tt>CounterMax</tt> value itself.
           </t>
           <t>
             The conceptualization of these iterative hashes as a 'chain' follows along with the ratchet analogy: while ratchets show how revealing
-            an intermediate hash at a lower Count value invalidates all Count values greater than or equal to itself, a chain helps to visualize the
-            actual formation of the HC primitive piece-by-piece (hence its name).
+            an intermediate hash at a lower <tt>Counter</tt> value MUST invalidate all <tt>Counter</tt> values greater than or equal to itself,
+            a chain helps to visualize the actual formation of the HC primitive piece-by-piece (hence its name). When any 'link' is revealed,
+            receivers MUST consider that link and all following links as invalid ZKPP for the HC. This means only unknown ZKPP links will ever be
+            accepted as valid proof of knowledge.
           </t>
           <figure anchor="session-chaining">
             <name>Hash Chaining in ND Sessions</name>
@@ -450,7 +454,11 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <t>
             Finalization of a HC occurs when its RH is preparing to be revealed and it has no more usable proofs in the HC. At this point,
             revelation of the RH MUST invalidate the HC globally. SNs MUST reveal the RH for finalized chains ONLY when offering a new HC
-            FH to move to; if no new HC FH is offered, the ND Session MUST be immediately terminated by the receiver of the RH.
+            FH to move to, or when stored NC details must change on the peer (such as a new TLLAO through a gratuitous NA). If no new HC FH
+            is offered in these circumstances, the ND Session MUST be immediately terminated by the receiver of the RH. This is because once
+            the RH ZKPP has been first revealed to the SP and there is no HC to move to, authentication is broken due to potential eavesdroppers.
+          </t>
+          <t>
             An HC MUST be considered 'finished' (or 'finalized') when any of the following are true:
           </t>
           <ul>
@@ -460,6 +468,9 @@ SAME CHAIN ACCORDING TO RECEIVERS:
               reaches 10% or less of the CounterMax value of the current session.</li>
             <li>The session itself is about to expire or needs to be forcibly refreshed otherwise.</li>
           </ul>
+          <t>
+            Any new HC moved to after the current HC is finalized MUST NOT use the same pseudo-random 'R' value in use by the previous HC.
+          </t>
           <t>
             See <xref target="appendix-chain"/> for more specific implementation details about RHCR and authentication.
           </t>
@@ -569,17 +580,60 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           expire or be invalidated (depending on persistence). This section discusses different phases of the session lifecycle and how
           they are intended to be controlled by implementations.
         </t>
-        <t>
-          Session are decoupled from NC entries, so as to allow implementations to track and store information about each separately.
-          This also simplifies integration of NDSOs.
-          For example, a NC entry might be set to the STALE state or otherwise destroyed, but information about the ND Session MUST
-          remain until it is either invalidated, expires, or is refreshed.
-        </t>
 
         <section anchor="summary-lifecycle-initiation">
-          <name>Initiations &amp; Renewals</name>
+          <name>Initiations</name>
           <!-- Cover the process, and don't forget to discuss the 'N' and 'A' bits. Also, ICMP DU responses and SITs -->
           <t>
+            When a node initiates a session, it MUST indicate its intent by setting the 'N' (New) flag of an NDSO on any NS or NA packet.
+            If the receiver of the packet is not already engaged in some session identified by the initiator (the SI), then it MAY choose
+            to respond with an NDSO including its own HC details with the 'A' (Acknowledge) bit set. If a session already exists based on
+            the information provided by the initiator, the packet must instead be considered an attempt to active the SIT (based on ICM).
+            If both NDSOs were valid and no session existed prior, a successful two-way handshake has been completed to establish one.
+          </t>
+          <t>
+            To discover in-progress sessions, nodes can search information in their local ND Session storage in the following manner:
+          </t>
+          <ul spacing="compact">
+            <li>Check the SessionID field of the incoming packet. If it matches a known ID, then the NDSO cannot be considered an initiation.</li>
+            <li>Examine the IP address of the sender, if provided. If this address appears in the local NC, there may or may not already be an
+              associated ND Session to examine.</li>
+          </ul>
+          <t>
+            Any deviation from this process, including strange behavior or spurious NDSOs not using the 'N' flag to indicate initiation
+            MUST be considered invalid by receivers. Sessions MUST NOT be started or recorded without first being initiated and acknowledged
+            by the SP.
+          </t>
+          <t>
+            Once a new session is formed, both DNs -- regardless of ICM -- will set and start a 1-minute SET that MUST NOT be canceled or
+            stopped unless a valid SRC packet is received from the SP. This prevents rogue or bogus sessions from being initiated and
+            then kept around for the entirety of the bogus Expiration time without ever receiving positive confirmation that the SP
+            actually exists and is responding on-link. The first valid SRC to be received from the SP MUST cancel the SET and change
+            its duration to the full Expiration as specified by the SP. Any valid SRCs after that MUST retart the SET at its full duration.
+          </t>
+        </section>
+
+        <section anchor="summary-lifecycle-rotate">
+          <name>Altering Hash Chain Salt Parameters</name>
+          <t>
+            There are times when the LLID or IP address of a node will change. This could be for any reason external to this specification
+            and should not be restricted in any way. Because certain node-specific parameters comprise the totality of the Salt value as
+            reconstructed by verifying SPs, moving to an entirely new HC on the SI (whose properties are changing) is the only option
+            available to keep a session alive. This same decision necessarily applied to requests to change the HC's CounterMax value
+            (max iterations) or the Expiration value as well.
+          </t>
+          <t>
+            Nodes wishing to update Salt-composing values for their HCs -- session Expiration, HC CounterMax (max iterations), the SI's
+            LLID, and/or the SI's IP address engaged in the session -- MUST finalize their current HC immediately in order to move to a
+            new one which is built with the new Salt value. Receivers will be capable of detecting the finalization and adjusting accordingly,
+            since exposing a RH is a high-priority action with ZKPP.
+          </t>
+          <t>
+            The process of notifying the SP of this change involves (1) exposing the RH while (2) expressing which FinalHash comes next
+            for the upcoming HC to be originated from the SI and validated by the SP.
+          </t>
+          <t>
+            The SessionID MUST NOT be considered a mutable field which can be changed in this way.
           </t>
         </section>
 
@@ -591,12 +645,17 @@ SAME CHAIN ACCORDING TO RECEIVERS:
               this transaction or the session will expire. -->
             Session Reachability Confirmation (SRCs) are very similar to Neighbor Reachability Confirmations as defined in Section 7.3.1
             of <xref target="RFC4861"/>, except an SRC MUST NOT include the notion of "hints" from upper-layer protocols in its
-            definition. Therefore, SRCs MUST come from valid NDSOs that are attached to NS or NA packets during the ND-native NUD process
-            that relies on 
+            definition. Therefore, SRCs MUST come from valid NDSOs that are attached to unicast NS or NA packets during the ND-native NUD
+            process.
           </t>
           <t>
             Certain session-related timers rely on SRCs to provide the most recent confirmation that a peer LLID is still owned by
-            the original peer participating in the session. Thus, NUD exchanges that 
+            the original peer participating in the session. Any received SRC usually allows extension of the session by either restarting
+            or altogether clearing the timer(s).
+          </t>
+          <t>
+            During the maintenance of a session, SRCs MUST be frequently sought by SNs in order to prevent coupled NC entries from entering
+            a STALE state. This proactive behavior simultaneously provides reachability confirmation while prolonging an active session.
           </t>
         </section>
 
@@ -607,7 +666,9 @@ SAME CHAIN ACCORDING TO RECEIVERS:
             <!-- Hosts receiving a bad NDSO response must send back an ICMP Dest Unreach to the cached peer. It will
               then wait 1 minute for continued forward progress (Reach Conf) before dropping the peer's NC entry
               and ND Session entirely. -->
+            <!-- TODO! -->
           <t>
+            This section is not completed in this version and is left TODO.
           </t>
         </section>
       </section>
@@ -696,14 +757,12 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <dd>Space reserved for future use. This value MUST be initialized to 0 by senders and MUST be ignored by receivers.</dd>
           <dt>Expiration</dt>
           <dd>
-            <t>
-              Dictates the amount of time taken, in minutes, for the ND Session to expire when no session activity occurs. 'Expiration'
-              means storage of session parameters and associations to NC entries MUST be destroyed in order to invalidate the session
-              from continuing. This value MUST be greater than or equal to 1.
+            Dictates the amount of time taken, in minutes, for the ND Session to expire when no session activity occurs. 'Expiration'
+            means storage of session details and its associated NC entry MUST be destroyed. This value MUST be greater than or equal to 1.
           </dd>
           <dt>SessionID</dt>
           <dd>
-            A pseudo-random 32-bit identifier for a session between two nodes. This value MUST NOT change while a session is kept alive.
+            A pseudo-random 32-bit identifier for a session between two nodes. This value MUST NOT change while a session is kept active.
           </dd>
           <dt>CounterMax</dt>
           <dd>
@@ -742,32 +801,79 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <section anchor="addenda-session-senders">
           <name>Processing Rules for Senders</name>
           <t>
+            Senders MUST NOT create NDSOs if there is not an active session with the target of the ND packet, and the sender does not intend
+            to initiate a new one.
+          </t>
+          <t>
+            If the sender wishes to initiate a new session, it MUST set the 'N' (New) bit and initialize the PeerHash and NewHash fields
+            to 0. When initiating, it is the sender's responsibility to determine the session's properties: the SessionID, the
+            CounterMax value (which the SP MAY match if it chooses to do so), session persistence (the 'P' bit), the Version, and the
+            Expiration value.
+          </t>
+          <t>
+            If the sender is acknowledging receipt of a session initiation request and the session initiation is accepted, the sender MUST
+            reflect and use the properties chosen by the initiator (the SessionID, Expiration, Version, and Persistence) in its
+            NDSO, and MUST set the 'A' (Acknowledge) bit to acknowledge two-way session establishment. The CounterMax value is RECOMMENDED
+            to match the value set by the initiator.
+          </t>
+          <t>
+            Just before sending the NDSO, the current <tt>HC<sub>SI</sub></tt> MUST be 'ticked' to the next ZKPP value and inserted into the
+            CurrentHash field. The Counter value MUST always be a value less than the last-sent NDSO Counter value for this SessionID.
+            If the NDSO is a new HC, the CurrentHash will most likely represent the Counter value at <tt>CounterMax - 2</tt>.
+            If the CurrentHash is being finalized, CurrentHash MUST be the RH of the <tt>HC<sub>SI</sub></tt> and the NewHash field MUST contain
+            the <tt>CounterMax - 1</tt> ZKPP of the next <tt>HC<sub>SI</sub></tt>.
+          </t>
+          <t>
+            When the NDSO does not represent a finalization of the <tt>HC<sub>SI</sub></tt>, then the NewHash field MUST be set to 0. If the
+            option represents a session initiation, then the PeerHash field MUST be set to 0.
+          </t>
+          <t>
+            Importantly, senders MUST NOT finalize the current <tt>HC<sub>SI</sub></tt> if there is any doubt of connectivity with the SP.
+            Revelation of the HC RH MUST be done selectively and judiciously to protect the session from hijacking.
           </t>
         </section>
 
         <section anchor="addenda-session-receivers">
           <name>Processing Rules for Receivers</name>
           <t>
+            Any NDSO which is ignored or which violates these rules specified for receivers MUST be considered invalid unless otherwise specified.
             Nodes receiving invalid NDSOs MUST reply with an ICMP Destination Unreachable having a Code value of 5 (Source Address Failed
             Ingress/Egress Policy) <xref target="RFC4443"/>. If the receiving node does not know the LLID of the NDSO sender, and if no
             SLLAO or TLLAO was included in the incoming ND packet, then the ICMP Destination Unreachable is NOT REQUIRED since the receiving
-            node would not know where to send it.
+            node would not know where to send it. This reply is intended to signal senders that their most recent NDSO was in some way invalid,
+            so the sender can take immediate appropriate action.
           </t>
-          <ul>
-            <li>
-              NDSOs MUST be received only via unicast ND traffic, with the exception of the initial multicast NS to resolve a target's TLLAO
-              and to initiate a new session.
-            </li>
-            <li>
-              SHA-256 MUST be used exclusively for all hash chaining and all subsequent verifications. Another hashing algorithm MAY supersede
-              this appointment in future protocol amendments.
-            </li>
-            <li>
-              Persistent sessions SHOULD only be used on stable networks where nodes are not frequently entering or exiting the network. Relying
-              on the 'ExpirationMin' time for the session to expire without valid ND messages is almost always a better option because it is
-              forgiving of potential node forgetfulness.
-            </li>
-          </ul>
+          <t>
+            NDSOs MUST be received only via unicast ND traffic, with the exception of the initial multicast NS to resolve a target's TLLAO
+            and to initiate a new session. NDSOs attached to other multicast ND traffic, or on ND packets other than NSs or NAs, MUST be
+            silently discarded and MUST NOT invoke an ICMP Destination Unreachable response from the receiver.
+          </t>
+          <t>
+            Any packets failing the RHCR ZKPP verification procedure specified in <xref target="summary-chains"/>
+          </t>
+          <t>
+            SHA-256 MUST be used exclusively for all hash chaining and all subsequent verifications. Another hashing algorithm MAY supersede
+            this appointment in future protocol amendments (as indicated by the 'Version' field). Receivers MUST expect senders to conform to
+            the protocol specification for the current NDSO Version of the session; if there is any discrepancy in the structure of the received
+            NDSO, it MUST be ignored.
+          </t>
+          <t>
+            Any received NDSOs that are not initiations (as marked by the 'N' bit) MUST be considered invalid if there is no active session
+            with the sender. Active sessions can be found by searching for the SessionID value in local session state storage. If the
+            received NDSO does not match the Expiration, Version, or CounterMax of the active session, or has a Counter greater than or
+            equal to a ZKPP (Counter value) already received, it MUST be considered invalid. 
+          </t>
+          <t>
+            If the local ICM specifies that sessions may be formed, any incoming ND packets appearing to come from an IP Source Address
+            that is in the local NC -- or which attempts to affect the local NC for that IP -- should be given special attention. If a
+            session is already correlated to the NC entry, incoming ND packets without NDSOs MUST be ignored. If a session is not pinned
+            to the NC entry, it is left to the local ICM to determine the next course of action.
+          </t>
+          <t>
+            The 'N' and 'A' bits MUST NOT be set if the NDSO is not an initiation or an acknowledgement of initiation, respectively. The
+            NewHash field MUST be set to 0 unless the Counter is set to 0 and the CurrentHash field contains a valid RH according to the
+            receiver's <tt>HC<sub>SP</sub></tt>. If the FinalHash value differs from the 
+          </t>
         </section>
       </section>
     </section>
@@ -821,12 +927,12 @@ SAME CHAIN ACCORDING TO RECEIVERS:
           <t>
             <tt>N<sub>b</sub></tt> receives the multicast NS. Before caching the LLID for the IP Source Address, it searches for a valid NDSO
             according to the <tt>Gracious</tt> ICM. Once found, it examines the <tt>SessionID</tt> to determine which session this is relevant to. Since no
-            session yet exists by that ID (because it is new), <tt>N<sub>b</sub></tt> checks its NC to determine if a cache entry for the IP Source
+            session yet exists by that ID because it is new, <tt>N<sub>b</sub></tt> checks its NC to determine if a cache entry for the IP Source
             Address already exists.
           </t>
           <t>
-            If an NC entry DOES exist, and the incoming session details do not match the last session for that entry, a 1-minute SIT for that NC entry's
-            session begins. If an NC entry DOES NOT exist, <tt>N<sub>b</sub></tt> begins calculating and storing the details of <tt>HC<sub>SP</sub></tt>.
+            If an NC entry DOES exist, a 1-minute SIT for that NC entry's session begins because the incoming packet is a re-initiation of a session.
+            If an NC entry DOES NOT exist, <tt>N<sub>b</sub></tt> begins calculating and storing the details of <tt>HC<sub>SP</sub></tt>.
           </t>
           <t>
             Since the NDSO packet says the <tt>Counter</tt> is 499 and the <tt>CounterMax</tt> is 500, <tt>N<sub>b</sub></tt> must iterate the input
@@ -1167,7 +1273,15 @@ SAME CHAIN ACCORDING TO RECEIVERS:
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/> <!-- BCP14 ambiguities -->
         <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4443.xml"/> <!-- ICMPv6 -->
         <xi:include anchor="MADINAS_CASES" href="https://bib.ietf.org/public/rfc/bibxml3/reference.I-D.ietf-madinas-use-cases.xml"/>
-        <!-- TODO: Add 'VBA' I-D reference. -->
+        <reference anchor="VBA" target="https://datatracker.ietf.org/doc/draft-puhl-6man-ndp-vba/">
+          <front>
+            <title>IPv6 Voucher-Based Addressing for Neighbor Discovery Address Resolution (draft-puhl-6man-ndp-vba-00)</title>
+            <author fullname="Zack Puhl" initials="Z." surname="Puhl">
+              <organization>University of Michigan</organization>
+            </author>
+            <date year="2024" month="April"/>
+          </front>
+        </reference>
         <reference anchor="NIKANDER" target="https://doi.org/10.1007/3-540-45807-7_3">
           <front>
             <title>Denial-of-Service, Address Ownership, and Early Authentication in the IPv6 World</title>
@@ -1229,7 +1343,7 @@ SAME CHAIN ACCORDING TO RECEIVERS:
     <section anchor="appendix-chain">
       <name>Reverse Hash Chain: A Concrete Example</name>
       <t>
-        This section contains a more detailed and specific example of RHCR, and how its values can be used as idempotent,
+        The following figure contains a more detailed and specific example of RHCR, and how its values can be used as idempotent,
         one-time passwords to prove knowledge of a single root password (the Root Hash).
         The final calculated SHA-256 values are bogus values; they are only written out to demonstrate the purpose
         of the HC in ZKPP and RHCR.
@@ -1273,18 +1387,19 @@ H_n+1 := SHA256(H_n || p)  <--- Intermediate Hashes
   H_c = H_5 = [function 'H_n+1' iterated 'c' times...]
       = 7d730fee...4aac9926
 
-* Any value H_n where {0 < n <= c} can be derived from H_0.
++ Any value H_n where {0 < n <= c} can be derived from H_0.
 
 =========================================================
 VERIFIER'S PERSPECTIVE:
  | "What I know is..."
     c    :=  5
     e    :=  23
+    i    :=  734453247
     L_SP :=  11-22-33-44-55-66
     A_SP :=  fe80::1234:5678
     H_c  :=  H_5  =  7d730fee...4aac9926
 
- | "I can also construct the Salt..."
+ | "So I can also construct the Salt..."
     p    :=  {0x05, 0x17, ..., 0x56, 0x78}
 
  | "To prove its identity, the Session Peer should send H_4.
